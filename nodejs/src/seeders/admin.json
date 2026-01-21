@@ -1,0 +1,9 @@
+[
+    {
+        "username": "admin",
+        "email": "admin@example.com",
+        "mobNo": "7878787878",
+        "role": "SUPER_ADMIN",
+        "canDel": false
+    }
+]

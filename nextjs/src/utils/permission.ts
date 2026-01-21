@@ -1,0 +1,57 @@
+import { APPLICATION_ENVIRONMENT, ROLE_TYPE, WEEKLY_REPORT_CAN_ACCESS } from "./constant";
+
+export const PERMISSIONS = {
+    WORKSPACE_ADD: 'workspace.add',
+    WORKSPACE_EDIT: 'workspace.edit',
+    UPGRADE_PLAN: 'plan.upgrade',
+    ARCHIVE_WORKSPACE: 'workspace.archive',
+    CHAT_DELETE: 'chat.delete',
+    COMPANY_USAGE: 'company.usage',
+    SUPER_SOLUTION_ACCESS: 'super-solution.access',
+    STORAGE_REQUEST_ACCESS: 'storage-request.access',
+    CREDIT_CONTROL_ACCESS: 'credit-control.access'
+} as const;
+
+export type Role = keyof typeof ROLES;
+type Permission = (typeof ROLES)[Role][number];
+
+const ROLES = {
+    COMPANY: [
+        PERMISSIONS.WORKSPACE_ADD,
+        PERMISSIONS.WORKSPACE_EDIT,
+        PERMISSIONS.UPGRADE_PLAN,
+        PERMISSIONS.ARCHIVE_WORKSPACE,
+        PERMISSIONS.CHAT_DELETE,
+        PERMISSIONS.SUPER_SOLUTION_ACCESS,
+        PERMISSIONS.STORAGE_REQUEST_ACCESS,
+        PERMISSIONS.CREDIT_CONTROL_ACCESS
+    ],
+    MANAGER: [
+        PERMISSIONS.WORKSPACE_ADD,
+        PERMISSIONS.WORKSPACE_EDIT,
+        PERMISSIONS.ARCHIVE_WORKSPACE,
+        PERMISSIONS.CHAT_DELETE,
+        PERMISSIONS.SUPER_SOLUTION_ACCESS,
+        PERMISSIONS.STORAGE_REQUEST_ACCESS,
+        PERMISSIONS.CREDIT_CONTROL_ACCESS
+    ],
+    USER: []
+} as const;
+
+export function hasPermission(role: Role, permission: Permission) {
+    if (!role || !ROLES[role]) {
+        return false;
+    }
+    return (ROLES[role] as readonly Permission[]).includes(permission);
+}
+
+export function isCompanyAdminOrManager(user) {
+    return user?.roleCode == ROLE_TYPE.COMPANY || user?.roleCode == ROLE_TYPE.COMPANY_MANAGER;
+}
+
+export function isXoneAdminOrManager(user) {
+    if (process.env.NEXT_PUBLIC_APP_ENVIRONMENT === APPLICATION_ENVIRONMENT.PRODUCTION) {
+        return WEEKLY_REPORT_CAN_ACCESS.includes(user?.email) && user?.company?.slug == 'xone-team' && (user?.roleCode == ROLE_TYPE.COMPANY || user?.roleCode == ROLE_TYPE.COMPANY_MANAGER);
+    }
+    return true;     
+}

@@ -1,0 +1,50 @@
+{
+    "solutionApps": [
+      {
+        "name": "AI Docs",
+        "description": "AI-powered document editor with dual editor modes (Rich Text & Markdown), smart templates, and OpenAI integration for document generation and formatting",
+        "charimg": "/solution-characters/soft-1.svg",
+        "category": "Productivity & Document Management",
+        "isActive": true,
+        "pathToOpen": "/ai-docs",
+        "sequence": 1
+      },
+      {
+        "name": "AI Recruiter",
+          "description": "AI Recruiter  is a tool that helps you follow up with your interview candidates and prospects after the interview",
+          "charimg": "/solution-characters/cool-1.svg",
+          "category": "Productivity",
+          "isActive": true,
+          "pathToOpen": "/ai-recruiter/dashboard",
+          "sequence": 2
+      },
+      {
+        "name": "Page Revamp",
+        "description": "AI-powered page revamp tool that generates content for extracted design elements and creates optimized pages",
+        "charimg": "/solution-characters/warm-2.svg",
+        "category": "Productivity & Document Management",
+        "isActive": true,
+        "pathToOpen": "/page-revamp",
+        "sequence": 3
+      },
+      {
+        "name" : "Blog Engine",
+        "description" : "AI-powered tool that helps you create high-quality, SEO-optimized articles in minutes. Whether you're a blogger, marketer, or business owner, generate keyword-rich content tailored for better search engine rankings — fast, easy, and effective.",
+        "charimg" : "/solution-characters/earth-4.svg",
+        "category" : "Productivity & Document Management",
+        "isActive" : true,
+        "pathToOpen" : "/blog-engine",
+        "sequence" : 4
+      },
+      {
+        "name": "Call Analyzer",
+        "description": "Call Analyzer is a tool that helps you analyze your sales calls and gain valuable insights to improve performance.",
+        "charimg": "/solution-characters/nature-1.svg",
+        "category": "Productivity & Document Management",
+        "isActive": true,
+        "pathToOpen": "/call-analyzer",
+        "sequence": 5
+      }
+    ]
+  }
+  

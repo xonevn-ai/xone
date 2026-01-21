@@ -1,0 +1,230 @@
+services:
+  redis:
+    image: "redis/redis-stack:latest" # Image name local developement with dashboard
+    container_name: redis_container # Container name
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+  app:
+    image: xoneai-app:latest
+    container_name: xone-frontend-container
+    ports:
+      - "3000:3000"
+    restart: always
+    env_file:
+      - .env  # Load environment variables from a .env file
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - ./nextjs:/usr/src/app
+      - /usr/src/app/node_modules
+      - /usr/src/app/.next
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - app-network
+    depends_on:
+      - nodejs
+      - mongo
+    
+  
+  nodejs:
+    build:
+      context: ./nodejs
+      dockerfile: Dockerfile  # Use the Dockerfile in the current directory
+    container_name: node_app
+    ports:
+      - "4050:4050"
+      - "3006:3006"  # Expose MCP server port
+    env_file:
+      - .env  # Load environment variables from a .env file
+    environment:
+      - MCP_SERVER_URL=http://localhost:3006  # Override for Docker networking
+      - OLLAMA_URL=http://host.docker.internal:11434  # Ollama access from Docker container
+    volumes:
+      - ./nodejs:/usr/src/app        
+      - /usr/src/app/node_modules 
+      - ./nodejs/storage:/usr/src/app/storage
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PWD}:/workspace
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - app-network
+    depends_on:
+      - mongo
+      - minio
+  
+  qdrant_primary:
+    image: "qdrant/qdrant:latest"
+    container_name: qdrant_primary  # 👈 Add this to both nodes
+    ports:
+      - "${QDRANT_DASHBOARD_PORT}:${QDRANT_DASHBOARD_PORT}"
+    environment:
+      QDRANT__CLUSTER__ENABLED: true
+      QDRANT__LOG_LEVEL: INFO
+    command: "./qdrant --uri http://qdrant_primary:${QDRANT_NODE_PORT}"
+    volumes:
+      - ./data/qdrant_primary_data:/qdrant/storage
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+
+  qdrant_secondary:
+    image: "qdrant/qdrant:latest"
+    container_name: qdrant_secondary
+    depends_on:
+      - qdrant_primary
+    environment:
+      QDRANT__CLUSTER__ENABLED: true
+      QDRANT__LOG_LEVEL: INFO
+    command: "./qdrant --bootstrap http://qdrant_primary:${QDRANT_NODE_PORT} --uri http://qdrant_secondary:${QDRANT_NODE_PORT}"
+    volumes:
+      - ./data/qdrant_secondary_data:/qdrant/storage
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s  # Increased interval
+      timeout: 5s  # Increased timeout
+      retries: 10   # Increased retries
+    restart: always
+    networks:
+      - app-network
+    
+  mongo:
+    image: mongo:latest
+    container_name: xoneai-mongo-1
+    ports:
+      - "${MONGO_PORT}:${MONGO_PORT}"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_INITDB_DATABASE=test
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - app-network
+
+  # mongo-express:
+  #   image: mongo-express:latest
+  #   restart: always
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     - ME_CONFIG_MONGODB_ENABLE_ADMIN=true
+  #     - ME_CONFIG_MONGODB_ADMINUSERNAME=admin
+  #     - ME_CONFIG_MONGODB_ADMINPASSWORD=password
+  #     - ME_CONFIG_BASICAUTH_USERNAME=xone
+  #     - ME_CONFIG_BASICAUTH_PASSWORD=password
+  #     - ME_CONFIG_MONGODB_SERVER=mongo
+  #   networks:
+  #     - app-network
+  #   depends_on:
+  #     - mongo
+
+
+
+
+  
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "${MINIO_PORT}:${MINIO_PORT}"     # S3 API port
+      - "${MINIO_DASHBOARD_PORT}:${MINIO_DASHBOARD_PORT}"     # Web UI port
+    volumes:
+      - minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=${AWS_ACCESS_KEY_ID}
+      - MINIO_ROOT_PASSWORD=${AWS_SECRET_ACCESS_KEY}
+    command: server /data --console-address ":${MINIO_DASHBOARD_PORT}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${MINIO_PORT}/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - app-network
+  
+  
+  minio-init:
+    image: minio/mc
+    env_file: ${ENV_FILE}
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/minio.sh"]
+    volumes:
+      - ./minio.sh:/minio.sh:ro
+    networks:
+      - app-network
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng-config/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      # - SEARXNG_BASE_URL=http://localhost:8080
+      - SEARXNG_BIND_ADDRESS=0.0.0.0:8080
+      - SEARXNG_PUBLIC_INSTANCE=false
+      - SEARXNG_LIMITER=false
+      
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/search?q=test&format=json"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  
+  
+  
+    
+networks:
+  app-network:
+    driver: bridge
+
+
+
+volumes:
+  mongo-data:
+  redis_data:
+  minio_data:
+  searxng_data:
+  app:
+  db:
+  data:
+  localstack:
+
+
