@@ -1,81 +1,61 @@
-const joi = require('joi');
+const { z } = require('zod');
 const { userSchemaKeys, brainSchemaKeys } = require('./commonref');
 
-const addChatMemberKeys = joi.object({
-    members: joi.array().items(
-        joi.object({
-            chatId: joi
-                .string()
-                .regex(/^[0-9a-fA-F]{24}$/)
-                .required(),
-            user: joi.object(userSchemaKeys).required(),
-            brain: joi.object(brainSchemaKeys).required(),
-        }),
+const addChatMemberKeys = z.object({
+    members: z.array(
+        z.object({
+            chatId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+            user: z.object(userSchemaKeys),
+            brain: z.object(brainSchemaKeys),
+        })
     ),
-    isBulk: joi.boolean().required(),
+    isBulk: z.boolean(),
 });
 
-const createNewChatKeys = joi.object({
-    brain: joi.object(brainSchemaKeys).allow({},null).optional(),
-    isShare: joi.boolean().optional(),
-    addDefaultBrain:joi.boolean().optional(),
-    workspaceId:joi.string().optional()
+const createNewChatKeys = z.object({
+    brain: z.object(brainSchemaKeys).optional().nullable(),
+    isShare: z.boolean().optional(),
+    addDefaultBrain: z.boolean().optional(),
+    workspaceId: z.string().optional()
 })
 
-const updateChatKeys = joi.object({
-    title: joi.string().required(),
+const updateChatKeys = z.object({
+    title: z.string(),
 })
 
-const favouriteKeys = joi.object({
-    isFavourite: joi.boolean().required()
+const favouriteKeys = z.object({
+    isFavourite: z.boolean()
 })
 
-const createForkChatKeys = joi.object({
-    brain: joi.object(brainSchemaKeys).required(),
-    title: joi.string().required(),
-    conversation: joi
-        .array()
-        .items(
-            joi
-                .object({
-                    message: joi.string().required(),
-                    response: joi.string().required(),
-                    responseModel: joi.string().required(),
-                    id: joi
-                        .string()
-                        .regex(/^[0-9a-fA-F]{24}$/)
-                        .required(),
-                })
-                .unknown(true),
-        )
-        .required(),
+const createForkChatKeys = z.object({
+    brain: z.object(brainSchemaKeys),
+    title: z.string(),
+    conversation: z.array(
+        z.object({
+            message: z.string(),
+            response: z.string(),
+            responseModel: z.string(),
+            id: z.string().regex(/^[0-9a-fA-F]{24}$/),
+        }).passthrough()
+    ),
 });
 
-const createShareChatKeys = joi.object({
-    brainId: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    chatId: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    access: joi.number().required(),
-    uri: joi.string().required(),
-    conversation: joi.array().items(joi.object().unknown(true)).required()
+const createShareChatKeys = z.object({
+    brainId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    chatId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    access: z.number(),
+    uri: z.string(),
+    conversation: z.array(z.object({}).passthrough())
 });
 
-const deleteShareChatKeys = joi.object({
-    id: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .optional(),
-    isBulk: joi.boolean().required(),
+const deleteShareChatKeys = z.object({
+    id: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+    isBulk: z.boolean(),
 });
 
-const getSearchMetadataKeys = joi.object({
-    query: joi.string().required(),
-    messageId: joi.string().regex(/^[0-9a-fA-F]{24}$/).required(),
+const getSearchMetadataKeys = z.object({
+    query: z.string(),
+    messageId: z.string().regex(/^[0-9a-fA-F]{24}$/),
 });
 
 module.exports = {

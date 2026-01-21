@@ -1,15 +1,15 @@
-const joi = require('joi');
+const { z } = require('zod');
 
-const s3FileDelete = joi.object({
-    key: joi.string().required(),
+const s3FileDelete = z.object({
+    key: z.string(),
 })
 
-const generatePresignedUrl = joi.object({
-    fileKey: joi.array().items(joi.object({
-        key: joi.string().required(),
-        type: joi.string().required(),
-    })).required(),
-    folder: joi.string().required(),
+const generatePresignedUrl = z.object({
+    fileKey: z.array(z.object({
+        key: z.string(),
+        type: z.string(),
+    })),
+    folder: z.string(),
 })
 
 module.exports = {

@@ -3,7 +3,7 @@ const mongoosePaginate = require('mongoose-paginate-v2');
 const { CUSTOM_PAGINATE_LABELS } = require('../config/constants/common');
 const { userSchema } = require('../utils/commonSchema');
 const config = require('../config/config');
-const moment = require('moment');
+
 
 mongoosePaginate.paginate.options = { customLabels: CUSTOM_PAGINATE_LABELS };
 const Schema = mongoose.Schema;

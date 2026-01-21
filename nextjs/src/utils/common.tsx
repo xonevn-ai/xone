@@ -1,7 +1,7 @@
 import DocsIcon from '@/icons/Docs';
 import PdfIcon from '@/icons/PdfIcon';
 import dayjs from 'dayjs';
-import moment from 'moment';
+
 import { DEFAULT_DATE_FORMAT, MODEL_CREDIT_INFO, MODEL_IMAGE_BY_CODE, SUBSCRIPTION_STATUS, AI_MODEL_CODE, GENERAL_BRAIN_TITLE, DEFAULT_BRAIN_TITLE, DEFAULT_CHAT_SLUG } from './constant';
 import { isIndiaByTimezone, retrieveBrainData } from './helper';
 import { STRIPE_SUBSCRIPTION_PRICE_ID, STRIPE_SUBSCRIPTION_PRICE_ID_IND } from '@/config/config';
@@ -30,7 +30,7 @@ export const getEmailFirstLetter = (email) => {
 export const capitalizeFirstLetter = (str) =>
     `${str.charAt(0).toUpperCase()}${str.slice(1)}`;
 
-export const setDate = (date:any) => {
+export const setDate = (date: any) => {
     return date ? dayjs(date) : '';
 };
 
@@ -124,23 +124,23 @@ export const removeObjectFromArray = (array, idToRemove) => {
 }
 
 export const getTimeAgo = (targetDate) => {
-    const currentDate = moment();
-    const duration = moment.duration(currentDate.diff(targetDate));
-    const seconds = duration.asSeconds();
-    const minutes = duration.asMinutes();
-    const hours = duration.asHours();
-    const days = duration.asDays();
+    const now = dayjs();
+    const target = dayjs(targetDate);
+    const diffInSeconds = now.diff(target, 'second');
+    const diffInMinutes = now.diff(target, 'minute');
+    const diffInHours = now.diff(target, 'hour');
+    const diffInDays = now.diff(target, 'day');
 
-    if (seconds < 10) {
+    if (diffInSeconds < 10) {
         return `few seconds ago`;
-    } else if (seconds < 60) {
-        return `${Math.floor(seconds)} seconds ago`;
-    } else if (minutes < 60) {
-        return `${Math.floor(minutes)} minutes ago`;
-    } else if (hours < 24) {
-        return `${Math.floor(hours)} hours ago`;
+    } else if (diffInSeconds < 60) {
+        return `${Math.floor(diffInSeconds)} seconds ago`;
+    } else if (diffInMinutes < 60) {
+        return `${Math.floor(diffInMinutes)} minutes ago`;
+    } else if (diffInHours < 24) {
+        return `${Math.floor(diffInHours)} hours ago`;
     } else {
-        return `${Math.floor(days)} days ago`;
+        return `${Math.floor(diffInDays)} days ago`;
     }
 }
 
@@ -156,7 +156,7 @@ export const megabytesToBytes = (megabytes) => {
 export const formatDate = (dateString) => {
     const date = new Date(dateString);
 
-    const options:any = { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' };
+    const options: any = { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' };
     const dateTimeString = date.toLocaleString('en-US', options);
 
     const [monthDay, time] = dateTimeString.split(', ');
@@ -178,19 +178,19 @@ export const formatDate = (dateString) => {
 
 export const getCurrentTypingMention = (text, cursorPosition) => {
     const textUpToCursor = text.slice(0, cursorPosition);
-    
-    const mentionRegex = /@([^\s@]*)/g; 
+
+    const mentionRegex = /@([^\s@]*)/g;
     let match;
     let lastMention = '';
 
     while ((match = mentionRegex.exec(textUpToCursor)) !== null) {
         const mentionStart = match.index;
         const mentionEnd = mentionStart + match[0].length;
-        
+
         // Check if the cursor is within the mention
         if (cursorPosition > mentionStart && cursorPosition <= mentionEnd) {
-            lastMention = '@'+match[1]; // Capture the mention text without '@'
-        }         
+            lastMention = '@' + match[1]; // Capture the mention text without '@'
+        }
     }
 
     return lastMention;
@@ -199,12 +199,12 @@ export const getCurrentTypingMention = (text, cursorPosition) => {
 
 export const filterUsersByKeyword = (records, substr) => {
     const substring = substr.replaceAll('@', '');
-    
+
     return records.filter(item => {
         const fname = item.user.fname ? item.user.fname?.toLowerCase() : '';
         const lname = item.user.lname ? item.user.lname?.toLowerCase() : '';
         const searchString = substring?.toLowerCase();
-        
+
         return fname.startsWith(searchString) || lname.startsWith(searchString);
     });
 };
@@ -220,49 +220,49 @@ export const getWordAtCursor = (text, position) => {
 
 export const copyToClipboard = async (text) => {
     try {
-        await navigator.clipboard.writeText(text);            
-    } catch (err) {            
-        console.error(err,'Failed to copy!');
+        await navigator.clipboard.writeText(text);
+    } catch (err) {
+        console.error(err, 'Failed to copy!');
     }
 };
 
 export const displayName = (user) => {
-    return user?.fname && user?.lname 
-      ? `${user?.fname} ${user?.lname}` 
-      : user?.email;
+    return user?.fname && user?.lname
+        ? `${user?.fname} ${user?.lname}`
+        : user?.email;
 };
- 
 
-export const truncateText=(text,maxLength)=>{
+
+export const truncateText = (text, maxLength) => {
     try {
 
-      return  text?.length>=maxLength ? text?.substring(0,maxLength)+"...":text
-        
+        return text?.length >= maxLength ? text?.substring(0, maxLength) + "..." : text
+
     } catch (error) {
-        console.error("Error in the truncate text in bot ::: ",error)
+        console.error("Error in the truncate text in bot ::: ", error)
     }
 }
 
-export const getModelImageByCode = (modelCode: string, responseModel = false) => { 
-    try {     
-        if(responseModel){
+export const getModelImageByCode = (modelCode: string, responseModel = false) => {
+    try {
+        if (responseModel) {
             const modelNameToCode = getCodeByModel(modelCode);
-            return modelNameToCode ? MODEL_IMAGE_BY_CODE?.[modelNameToCode] : "/Ai-icon.svg";  
+            return modelNameToCode ? MODEL_IMAGE_BY_CODE?.[modelNameToCode] : "/Ai-icon.svg";
         }
-        return MODEL_IMAGE_BY_CODE?.[modelCode] || "/Ai-icon.svg";  
+        return MODEL_IMAGE_BY_CODE?.[modelCode] || "/Ai-icon.svg";
     } catch (error) {
-        console.error("Error in the getModelImageByCode ::: ",error);
+        console.error("Error in the getModelImageByCode ::: ", error);
     }
 }
 
 
 export const createHandleOutsideClick = (
-    inputRef:any,
-    buttonRef:any,
-    setIsEditing:any,
-    setEditedTitles:any= false, //use for the chat title due to map on chat title
-    setEditedTitle:any=false, //use for if user change title but click outside to set the actual title
-    actualTitle:any=false, //before saved actual title
+    inputRef: any,
+    buttonRef: any,
+    setIsEditing: any,
+    setEditedTitles: any = false, //use for the chat title due to map on chat title
+    setEditedTitle: any = false, //use for if user change title but click outside to set the actual title
+    actualTitle: any = false, //before saved actual title
 ) => {
     try {
         return (event) => {
@@ -282,24 +282,24 @@ export const createHandleOutsideClick = (
     }
 };
 
-export const showNameOrEmail=(user)=>{
+export const showNameOrEmail = (user) => {
     try {
-        return (user?.fname && user?.lname )? `${user?.fname} ${user?.lname}`:user?.email
-        
+        return (user?.fname && user?.lname) ? `${user?.fname} ${user?.lname}` : user?.email
+
     } catch (error) {
-        console.error("Error in showNameOrEmail ::: ",error)
+        console.error("Error in showNameOrEmail ::: ", error)
     }
 }
 
 export const timestampToDate = (timestamp) => {
     return new Date(timestamp * 1000).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
     });
 };
 
-export const showPrice = (amount:any) => {
+export const showPrice = (amount: any) => {
     return (amount / 100).toFixed(2);
 };
 
@@ -321,8 +321,8 @@ export const getDefaultSlug = (user) => {
 }
 
 
-export const isCreditLimitExceeded = (msgCreditLimit,msgCreditUsed) => {
-   return msgCreditUsed >= msgCreditLimit
+export const isCreditLimitExceeded = (msgCreditLimit, msgCreditUsed) => {
+    return msgCreditUsed >= msgCreditLimit
 }
 
 export const getCodeByModel = (model) => {
@@ -331,13 +331,13 @@ export const getCodeByModel = (model) => {
 }
 
 export const modelNameConvert = (code: string, modelName: string) => {
-    if(code == AI_MODEL_CODE.DEEPSEEK){
+    if (code == AI_MODEL_CODE.DEEPSEEK) {
         return modelName.split(':')[0].split('/')?.[1] || modelName;
     }
-    if(code == AI_MODEL_CODE.LLAMA4){
+    if (code == AI_MODEL_CODE.LLAMA4) {
         return modelName.split(':')[0].split('/')?.[1] || modelName;
     }
-    if(code == AI_MODEL_CODE.QWEN){
+    if (code == AI_MODEL_CODE.QWEN) {
         return modelName.split(':')[0].split('/')?.[1] || modelName;
     }
     return modelName;
@@ -351,7 +351,7 @@ export const generateDefaultSlug = (user) => {
 
 export const getFileIconClassName = (fileType: string) => {
     const baseClasses = "w-4 h-4 object-contain rounded-custom inline-block me-[9px] fill-black";
-    
+
     if (fileType === 'doc' || fileType === 'docx') {
         return `${baseClasses} fill-[#2B579A]`;
     }
@@ -395,7 +395,7 @@ export const getSelectedBrain = (brains: any[], getCurrentUser: any, isDefaultNe
 
 // Simple debounce utility function
 export const debounce = (func: Function, delay: number) => {
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: ReturnType<typeof setTimeout>;
     return (...args: any[]) => {
         clearTimeout(timeoutId);
         timeoutId = setTimeout(() => func.apply(null, args), delay);
@@ -480,7 +480,7 @@ export const DEFAULT_CHARACTERS_BRAIN = {
         { id: 'earth-16', image: '/brain-characters/earth-16.svg' },
         { id: 'earth-17', image: '/brain-characters/earth-17.svg' },
     ],
-    '⚡ Electric': [   
+    '⚡ Electric': [
         { id: 'electric-1', image: '/brain-characters/electric-1.svg' },
         { id: 'electric-2', image: '/brain-characters/electric-2.svg' },
         { id: 'electric-3', image: '/brain-characters/electric-3.svg' },
@@ -500,7 +500,7 @@ export const DEFAULT_CHARACTERS_BRAIN = {
         { id: 'electric-17', image: '/brain-characters/electric-17.svg' },
         { id: 'electric-18', image: '/brain-characters/electric-18.svg' },
     ],
-    '🔥 Warm': [   
+    '🔥 Warm': [
         { id: 'warm-1', image: '/brain-characters/warm-1.svg' },
         { id: 'warm-2', image: '/brain-characters/warm-2.svg' },
         { id: 'warm-3', image: '/brain-characters/warm-3.svg' },
@@ -508,7 +508,7 @@ export const DEFAULT_CHARACTERS_BRAIN = {
         { id: 'warm-5', image: '/brain-characters/warm-5.svg' },
         { id: 'warm-6', image: '/brain-characters/warm-6.svg' },
     ],
-    '🌊 Aqua': [   
+    '🌊 Aqua': [
         { id: 'aqua-1', image: '/brain-characters/aqua-1.svg' },
         { id: 'aqua-2', image: '/brain-characters/aqua-2.svg' },
         { id: 'aqua-3', image: '/brain-characters/aqua-3.svg' },
@@ -517,140 +517,140 @@ export const DEFAULT_CHARACTERS_BRAIN = {
         { id: 'aqua-6', image: '/brain-characters/aqua-6.svg' },
         { id: 'aqua-7', image: '/brain-characters/aqua-7.svg' },
     ],
-    
+
 };
 
-export const DEFAULT_CHARACTERS_SOLUTION_APP =[
-            '/solution-characters/soft-1.svg',
-            '/solution-characters/soft-2.svg',
-            '/solution-characters/soft-3.svg',
-            '/solution-characters/soft-4.svg',
-            '/solution-characters/soft-5.svg',
-            '/solution-characters/soft-6.svg',
-            '/solution-characters/soft-7.svg',
-            '/solution-characters/soft-8.svg',
-            '/solution-characters/soft-9.svg',
-            '/solution-characters/soft-10.svg',
-            '/solution-characters/soft-11.svg',
-            '/solution-characters/soft-12.svg',
-            '/solution-characters/soft-13.svg',
-            '/solution-characters/soft-14.svg',
-            '/solution-characters/soft-15.svg',
-            '/solution-characters/soft-16.svg',
-            '/solution-characters/soft-17.svg',
-            '/solution-characters/soft-18.svg',
-          
-            '/solution-characters/nature-1.svg',
-            '/solution-characters/nature-2.svg',
-            '/solution-characters/nature-3.svg',
-            '/solution-characters/nature-4.svg',
-            '/solution-characters/nature-5.svg',
-            '/solution-characters/nature-6.svg',
-            '/solution-characters/nature-7.svg',
-            '/solution-characters/nature-8.svg',
-            '/solution-characters/nature-9.svg',
-            '/solution-characters/nature-10.svg',
-          
-            '/solution-characters/vibrant-1.svg',
-            '/solution-characters/vibrant-2.svg',
-            '/solution-characters/vibrant-3.svg',
-            '/solution-characters/vibrant-4.svg',
-            '/solution-characters/vibrant-5.svg',
-            '/solution-characters/vibrant-6.svg',
-          
-            '/solution-characters/cool-1.svg',
-            '/solution-characters/cool-2.svg',
-            '/solution-characters/cool-3.svg',
-            '/solution-characters/cool-4.svg',
-            '/solution-characters/cool-5.svg',
-            '/solution-characters/cool-6.svg',
-            '/solution-characters/cool-7.svg',
-            '/solution-characters/cool-8.svg',
-            '/solution-characters/cool-9.svg',
-            '/solution-characters/cool-10.svg',
-            '/solution-characters/cool-11.svg',
-            '/solution-characters/cool-12.svg',
-            '/solution-characters/cool-13.svg',
-            '/solution-characters/cool-14.svg',
-            '/solution-characters/cool-15.svg',
-            '/solution-characters/cool-16.svg',
-            '/solution-characters/cool-17.svg',
-          
-            '/solution-characters/earth-1.svg',
-            '/solution-characters/earth-2.svg',
-            '/solution-characters/earth-3.svg',
-            '/solution-characters/earth-4.svg',
-            '/solution-characters/earth-5.svg',
-            '/solution-characters/earth-6.svg',
-            '/solution-characters/earth-7.svg',
-            '/solution-characters/earth-8.svg',
-            '/solution-characters/earth-9.svg',
-            '/solution-characters/earth-10.svg',
-            '/solution-characters/earth-11.svg',
-            '/solution-characters/earth-12.svg',
-            '/solution-characters/earth-13.svg',
-            '/solution-characters/earth-14.svg',
-            '/solution-characters/earth-15.svg',
-            '/solution-characters/earth-16.svg',
-            '/solution-characters/earth-17.svg',
-          
-            '/solution-characters/electric-1.svg',
-            '/solution-characters/electric-2.svg',
-            '/solution-characters/electric-3.svg',
-            '/solution-characters/electric-4.svg',
-            '/solution-characters/electric-5.svg',
-            '/solution-characters/electric-6.svg',
-            '/solution-characters/electric-7.svg',
-            '/solution-characters/electric-8.svg',
-            '/solution-characters/electric-9.svg',
-            '/solution-characters/electric-10.svg',
-            '/solution-characters/electric-11.svg',
-            '/solution-characters/electric-12.svg',
-            '/solution-characters/electric-13.svg',
-            '/solution-characters/electric-14.svg',
-            '/solution-characters/electric-15.svg',
-            '/solution-characters/electric-16.svg',
-            '/solution-characters/electric-17.svg',
-            '/solution-characters/electric-18.svg',
-          
-            '/solution-characters/warm-1.svg',
-            '/solution-characters/warm-2.svg',
-            '/solution-characters/warm-3.svg',
-            '/solution-characters/warm-4.svg',
-            '/solution-characters/warm-5.svg',
-            '/solution-characters/warm-6.svg',
-          
-            '/solution-characters/aqua-1.svg',
-            '/solution-characters/aqua-2.svg',
-            '/solution-characters/aqua-3.svg',
-            '/solution-characters/aqua-4.svg',
-            '/solution-characters/aqua-5.svg',
-            '/solution-characters/aqua-6.svg',
-            '/solution-characters/aqua-7.svg'
+export const DEFAULT_CHARACTERS_SOLUTION_APP = [
+    '/solution-characters/soft-1.svg',
+    '/solution-characters/soft-2.svg',
+    '/solution-characters/soft-3.svg',
+    '/solution-characters/soft-4.svg',
+    '/solution-characters/soft-5.svg',
+    '/solution-characters/soft-6.svg',
+    '/solution-characters/soft-7.svg',
+    '/solution-characters/soft-8.svg',
+    '/solution-characters/soft-9.svg',
+    '/solution-characters/soft-10.svg',
+    '/solution-characters/soft-11.svg',
+    '/solution-characters/soft-12.svg',
+    '/solution-characters/soft-13.svg',
+    '/solution-characters/soft-14.svg',
+    '/solution-characters/soft-15.svg',
+    '/solution-characters/soft-16.svg',
+    '/solution-characters/soft-17.svg',
+    '/solution-characters/soft-18.svg',
+
+    '/solution-characters/nature-1.svg',
+    '/solution-characters/nature-2.svg',
+    '/solution-characters/nature-3.svg',
+    '/solution-characters/nature-4.svg',
+    '/solution-characters/nature-5.svg',
+    '/solution-characters/nature-6.svg',
+    '/solution-characters/nature-7.svg',
+    '/solution-characters/nature-8.svg',
+    '/solution-characters/nature-9.svg',
+    '/solution-characters/nature-10.svg',
+
+    '/solution-characters/vibrant-1.svg',
+    '/solution-characters/vibrant-2.svg',
+    '/solution-characters/vibrant-3.svg',
+    '/solution-characters/vibrant-4.svg',
+    '/solution-characters/vibrant-5.svg',
+    '/solution-characters/vibrant-6.svg',
+
+    '/solution-characters/cool-1.svg',
+    '/solution-characters/cool-2.svg',
+    '/solution-characters/cool-3.svg',
+    '/solution-characters/cool-4.svg',
+    '/solution-characters/cool-5.svg',
+    '/solution-characters/cool-6.svg',
+    '/solution-characters/cool-7.svg',
+    '/solution-characters/cool-8.svg',
+    '/solution-characters/cool-9.svg',
+    '/solution-characters/cool-10.svg',
+    '/solution-characters/cool-11.svg',
+    '/solution-characters/cool-12.svg',
+    '/solution-characters/cool-13.svg',
+    '/solution-characters/cool-14.svg',
+    '/solution-characters/cool-15.svg',
+    '/solution-characters/cool-16.svg',
+    '/solution-characters/cool-17.svg',
+
+    '/solution-characters/earth-1.svg',
+    '/solution-characters/earth-2.svg',
+    '/solution-characters/earth-3.svg',
+    '/solution-characters/earth-4.svg',
+    '/solution-characters/earth-5.svg',
+    '/solution-characters/earth-6.svg',
+    '/solution-characters/earth-7.svg',
+    '/solution-characters/earth-8.svg',
+    '/solution-characters/earth-9.svg',
+    '/solution-characters/earth-10.svg',
+    '/solution-characters/earth-11.svg',
+    '/solution-characters/earth-12.svg',
+    '/solution-characters/earth-13.svg',
+    '/solution-characters/earth-14.svg',
+    '/solution-characters/earth-15.svg',
+    '/solution-characters/earth-16.svg',
+    '/solution-characters/earth-17.svg',
+
+    '/solution-characters/electric-1.svg',
+    '/solution-characters/electric-2.svg',
+    '/solution-characters/electric-3.svg',
+    '/solution-characters/electric-4.svg',
+    '/solution-characters/electric-5.svg',
+    '/solution-characters/electric-6.svg',
+    '/solution-characters/electric-7.svg',
+    '/solution-characters/electric-8.svg',
+    '/solution-characters/electric-9.svg',
+    '/solution-characters/electric-10.svg',
+    '/solution-characters/electric-11.svg',
+    '/solution-characters/electric-12.svg',
+    '/solution-characters/electric-13.svg',
+    '/solution-characters/electric-14.svg',
+    '/solution-characters/electric-15.svg',
+    '/solution-characters/electric-16.svg',
+    '/solution-characters/electric-17.svg',
+    '/solution-characters/electric-18.svg',
+
+    '/solution-characters/warm-1.svg',
+    '/solution-characters/warm-2.svg',
+    '/solution-characters/warm-3.svg',
+    '/solution-characters/warm-4.svg',
+    '/solution-characters/warm-5.svg',
+    '/solution-characters/warm-6.svg',
+
+    '/solution-characters/aqua-1.svg',
+    '/solution-characters/aqua-2.svg',
+    '/solution-characters/aqua-3.svg',
+    '/solution-characters/aqua-4.svg',
+    '/solution-characters/aqua-5.svg',
+    '/solution-characters/aqua-6.svg',
+    '/solution-characters/aqua-7.svg'
 ];
 
 export const getRandomCharacterAgent = () => {
-    const allCharacters: Array<{id: string, image: string}> = [];
-    
+    const allCharacters: Array<{ id: string, image: string }> = [];
+
     // Flatten all characters from all categories into a single array
     Object.values(DEFAULT_CHARACTERS).forEach(category => {
         allCharacters.push(...category);
     });
-    
+
     // Return a random character
     const randomIndex = Math.floor(Math.random() * allCharacters.length);
     return allCharacters[randomIndex];
 };
 
- // Function to get a random character from all tabs
- export const getRandomCharacter = () => {
-    const allCharacters: Array<{id: string, image: string}> = [];
-    
+// Function to get a random character from all tabs
+export const getRandomCharacter = () => {
+    const allCharacters: Array<{ id: string, image: string }> = [];
+
     // Flatten all characters from all categories into a single array
     Object.values(DEFAULT_CHARACTERS_BRAIN).forEach(category => {
         allCharacters.push(...category);
     });
-    
+
     // Return a random character
     const randomIndex = Math.floor(Math.random() * allCharacters.length);
     return allCharacters[randomIndex];

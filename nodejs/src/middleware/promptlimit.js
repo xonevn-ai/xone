@@ -1,12 +1,12 @@
 const { getCompanyId } = require("../utils/helper");
 const { getUsedCredit } = require("../services/thread");
 const Company = require("../models/company");
-const moment = require("moment");
+
 
 const checkPromptLimit = catchAsync(async (req, res, next) => {
   try {
     const companyId = getCompanyId(req.user);
-    
+
     const filter = {
       companyId: companyId,
       userId: req.user.id,

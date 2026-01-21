@@ -1,44 +1,35 @@
-const joi = require('joi');
+const { z } = require('zod');
 const { userSchemaKeys, botSchemaKeys, brainSchemaKeys } = require('./commonref');
 
-const createPageKeys = joi.object({
-    originalMessageId: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    title: joi.string().required(),
-    content: joi.string().required(),
-    chatId: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    user: joi.object().unknown(true).required(),
-    brain: joi.object().unknown(true).optional(),
-    model: joi.object().unknown(true).required(),
-    tokens: joi.object({
-        totalUsed: joi.number().optional(),
-        promptT: joi.number().optional(),
-        completion: joi.number().optional(),
-        totalCost: joi.string().optional(),
-        imageT: joi.number().optional()
+const createPageKeys = z.object({
+    originalMessageId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    title: z.string(),
+    content: z.string(),
+    chatId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    user: z.object({}).passthrough(),
+    brain: z.object({}).passthrough().optional(),
+    model: z.object({}).passthrough(),
+    tokens: z.object({
+        totalUsed: z.number().optional(),
+        promptT: z.number().optional(),
+        completion: z.number().optional(),
+        totalCost: z.string().optional(),
+        imageT: z.number().optional()
     }).optional(),
-    responseModel: joi.string().optional(),
-    responseAPI: joi.string().optional(),
-    companyId: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required()
-}).unknown(true);
+    responseModel: z.string().optional(),
+    responseAPI: z.string().optional(),
+    companyId: z.string().regex(/^[0-9a-fA-F]{24}$/)
+}).passthrough();
 
-const updatePageKeys = joi.object({
-    title: joi.string().optional(),
-    content: joi.string().optional(),
-}).min(1);
+const updatePageKeys = z.object({
+    title: z.string().optional(),
+    content: z.string().optional(),
+}).refine(data => Object.keys(data).length > 0, { message: "At least one field is required" });
 
-const getAllPagesKeys = joi.object({
-    query: joi.object().optional(),
-    options: joi.object().optional()
-}).unknown(true);
+const getAllPagesKeys = z.object({
+    query: z.object({}).optional(),
+    options: z.object({}).optional()
+}).passthrough();
 
 module.exports = {
     createPageKeys,

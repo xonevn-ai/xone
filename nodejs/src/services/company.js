@@ -5,7 +5,11 @@ const { inviteUser } = require('./auth');
 const { getTemplate } = require('../utils/renderTemplate');
 const { sendSESMail } = require('./email');
 const { EMAIL_TEMPLATE, MOMENT_FORMAT, EXPORT_TYPE, ROLE_TYPE, INVITATION_TYPE, JWT_STRING, MODEL_CODE, APPLICATION_ENVIRONMENT } = require('../config/constants/common');
-const moment = require('moment-timezone');
+const dayjs = require('dayjs');
+const utc = require('dayjs/plugin/utc');
+const timezone = require('dayjs/plugin/timezone');
+dayjs.extend(utc);
+dayjs.extend(timezone);
 const { randomPasswordGenerator, encryptedData, generateRandomToken, genHash, getCompanyId, formatBot } = require('../utils/helper');
 const bcrypt = require('bcrypt');
 const Role = require('../models/role');
@@ -19,7 +23,7 @@ const BlockedDomain = require('../models/blockedDomain');
 const { addDefaultWorkSpace } = require('./workspace');
 const { defaultCompanyBrain } = require('./brain');
 
-const createUser = async(req) => {
+const createUser = async (req) => {
     return User.create({
         fname: req.body.fname,
         lname: req.body.lname,
@@ -34,16 +38,16 @@ const createUser = async(req) => {
 
 async function addCompany(req, flag = true) {
     try {
-        
-        if(SERVER.NODE_ENV === APPLICATION_ENVIRONMENT.PRODUCTION) {
-            if(await isBlockedDomain(req.body.email)) {
+
+        if (SERVER.NODE_ENV === APPLICATION_ENVIRONMENT.PRODUCTION) {
+            if (await isBlockedDomain(req.body.email)) {
                 throw new Error('This email domain is not allowed');
             }
-            if(isDisposableEmail(req.body.email)) {
+            if (isDisposableEmail(req.body.email)) {
                 throw new Error('Disposable email addresses are not allowed');
             }
         }
-   
+
         const existingEmail = await User.findOne({ email: req.body.email }, { email: 1 });
         if (existingEmail) throw new Error(_localize('module.alreadyExists', req, 'email'));
         const existingCompany = await Company.findOne({ slug: slugify(req.body.companyNm) });
@@ -57,15 +61,15 @@ async function addCompany(req, flag = true) {
         req.body.allowuser = 10 // add temp flag manually billing managment
         req.body.inviteSts = INVITATION_TYPE.ACCEPT;
         // const user = flag ? await inviteUser(req) : await createUser(req);
-        
+
         const companyData = {
             slug: slugify(req.body.companyNm),
             ...req.body,
         }
         const company = await Company.create(companyData);
         const companyObj = {
-            name: company.companyNm, 
-            slug: company.slug, 
+            name: company.companyNm,
+            slug: company.slug,
             id: company._id
         }
         const user = await User.create({ ...req.body, company: companyObj, msgCredit: 1000 });
@@ -73,7 +77,7 @@ async function addCompany(req, flag = true) {
         if (defaultWorkSpace) {
             await defaultCompanyBrain(defaultWorkSpace._id, user);
         }
-        
+
         return company;
     } catch (error) {
         handleError(error, 'Error - addCompany');
@@ -142,7 +146,7 @@ const exportCompanies = async (req, fileType) => {
             searchColumns: req.query?.searchColumns?.split(','),
         };
 
-        const { data }  = await getAll(req);
+        const { data } = await getAll(req);
 
         const columns = [
             { header: 'Sr. No.', key: 'srNo' },
@@ -163,15 +167,15 @@ const exportCompanies = async (req, fileType) => {
                 companyNm: item.companyNm,
                 email: user.email,
                 mobNo: user.mobNo,
-                renewDate: item.renewDate ? moment(item.renewDate).format(MOMENT_FORMAT) : '-',
+                renewDate: item.renewDate ? dayjs(item.renewDate).format(MOMENT_FORMAT) : '-',
                 renewAmt: item.renewAmt,
                 users: item.users.map(e => e.email).join(','),
                 isActive: item.isActive ? 'Active' : 'Deactive',
-                createdAt: item.createdAt ? moment(item.createdAt).format(MOMENT_FORMAT) : '-', 
+                createdAt: item.createdAt ? dayjs(item.createdAt).format(MOMENT_FORMAT) : '-',
             }
         }))
 
-        const fileName = `company list ${moment().format(MOMENT_FORMAT)}`;
+        const fileName = `company list ${dayjs().format(MOMENT_FORMAT)}`;
 
         const workbook = dbService.exportToExcel(EXPORT_TYPE.NAME, columns, result);
 
@@ -184,7 +188,7 @@ const exportCompanies = async (req, fileType) => {
     }
 }
 
-const addTeamMembers = async(req) => {
+const addTeamMembers = async (req) => {
     try {
         const { users } = req.body;
         const emailData = [];
@@ -208,7 +212,7 @@ const addTeamMembers = async(req) => {
 
         emailData.forEach((value) => {
             getTemplate(EMAIL_TEMPLATE.ONBOARD_USER, { email: value.email, password: value.password }).then(
-                async(template) => {
+                async (template) => {
                     await sendSESMail(value.email, template.subject, template.body);
                 }
             )
@@ -286,7 +290,7 @@ async function aiModalCreation(req) {
                     modelConfig['modelType'] = value;
                     modelConfig['dimensions'] = 1536;
                 }
-                else{
+                else {
                     if ([MODAL_NAME.GPT_O1, MODAL_NAME.GPT_O1_MINI, MODAL_NAME.GPT_O1_PREVIEW, MODAL_NAME.GPT_O3_MINI, MODAL_NAME.GPT_4_1, MODAL_NAME.GPT_4_1_MINI, MODAL_NAME.GPT_4_1_NANO, MODAL_NAME.O4_MINI, MODAL_NAME.O3, MODAL_NAME.CHATGPT_4O_LATEST].includes(key)) {
                         modelConfig['extraConfig'] = {
                             temperature: 1
@@ -306,14 +310,14 @@ async function aiModalCreation(req) {
             else inserts.push(modelConfig);
         }
 
-        if(updates.length){
+        if (updates.length) {
             await UserBot.bulkWrite(updates)
         }
 
-        if(inserts.length){
+        if (inserts.length) {
             return UserBot.insertMany(inserts)
         }
-        
+
         return existing;
     } catch (error) {
         handleError(error, 'Error - aiModalCreation');
@@ -323,14 +327,14 @@ async function aiModalCreation(req) {
 async function openAIApiChecker(req) {
     try {
         const companyId = getCompanyId(req.user);
-        
+
         const response = await fetch(LINK.OPEN_AI_MODAL, {
             method: 'GET',
             headers: {
                 Authorization: `Bearer ${req.body.key}`
             }
         });
-        
+
         const jsonData = await response.json();
         if (!response.ok) {
             return jsonData;
@@ -383,17 +387,17 @@ async function openAIApiChecker(req) {
                     }
                 });
             else inserts.push(modelConfig);
-            
+
         }
 
-        if(updates.length){
+        if (updates.length) {
             await UserBot.bulkWrite(updates)
         }
 
-        if(inserts.length){
+        if (inserts.length) {
             return UserBot.insertMany(inserts)
         }
-        
+
         return existing;
     } catch (error) {
         handleError(error, 'Error - openAIApiChecker');
@@ -402,7 +406,7 @@ async function openAIApiChecker(req) {
 
 
 const checkApiKey = async (req) => {
-     try {
+    try {
         const { code } = req.body;
 
         const providerObj = {
@@ -414,26 +418,26 @@ const checkApiKey = async (req) => {
         }
         const provider = await providerObj[code](req);
         return provider;
-       
+
     } catch (error) {
         handleError(error, 'Error - checkApiKey');
     }
     // try {
 
     //     const companyId = getCompanyId(req.user);
-       
+
     //     const response = await fetch(LINK.OPEN_AI_MODAL, {
     //         method: 'GET',
     //         headers: {
     //             Authorization: `Bearer ${req.body.key}`
     //         }
     //     });
-        
+
     //     const data = await response.json();
     //     if (!response.ok) {
     //         return data;
     //     }
-        
+
     //     await Promise.all([
     //         Company.updateOne({ _id: companyId }, { $unset: { [`queryLimit.${AI_MODAL_PROVIDER.OPEN_AI}`]: '' }}),
     //         openAIBillingChecker(req),
@@ -447,11 +451,11 @@ const checkApiKey = async (req) => {
 
 const resendVerification = async (req) => {
     try {
-        const existingUser = await User.findOne({ email: req.body.email }); 
+        const existingUser = await User.findOne({ email: req.body.email });
         if (!existingUser) throw new Error(_localize('auth.link_expire', req, 'verification'));
         const inviteLink = await createVerifyLink(existingUser, {}, req.body.minutes);
         getTemplate(EMAIL_TEMPLATE.RESEND_VERIFICATION_LINK, { link: inviteLink, support: EMAIL?.SENDER_EMAIL }).then(
-            async(template) => {
+            async (template) => {
                 await sendSESMail(existingUser.email, template.subject, template.body);
             }
         )
@@ -466,7 +470,7 @@ const createVerifyLink = async (user, payload, expireTime = 60) => {
         const inviteHash = `invite?token=${generateRandomToken()}&hash=${genHash()}`;
         const inviteLink = `${LINK.FRONT_URL}/${inviteHash}`;
         const sysdate = convertToTz();
-        const linkExpiresTime = moment(sysdate).add(expireTime, 'minutes').format(MOMENT_FORMAT);
+        const linkExpiresTime = dayjs(sysdate).add(expireTime, 'minutes').format(MOMENT_FORMAT);
         await User.updateOne({ _id: user._id }, {
             $set: {
                 ...payload,
@@ -477,17 +481,17 @@ const createVerifyLink = async (user, payload, expireTime = 60) => {
         });
         return inviteLink;
     } catch (error) {
-        handleError(error, 'Error - resendVerification');   
+        handleError(error, 'Error - resendVerification');
     }
 }
 
 async function createPinecornIndex(user, req) {
     try {
         const { ensureIndex } = require('./pinecone');
-        
+
         // Create Pinecone index directly using the new service
         await ensureIndex(user.company.id, 1536);
-        
+
         // Store metadata in MongoDB for reference
         const data = mongoose.connection;
         const result = data.db.collection('companypinecone');
@@ -523,11 +527,11 @@ async function createPinecornIndex(user, req) {
         }
 
         await createFreeTierApiKey(user);
-        
+
         logger.info(`Pinecone index created successfully for company: ${user.company.id}`);
     } catch (error) {
         console.log("🚀 ~ createPinecornIndex ~ error:", error)
-        handleError(error, 'Error - createPinecornIndex'); 
+        handleError(error, 'Error - createPinecornIndex');
     }
 }
 
@@ -575,20 +579,20 @@ async function huggingFaceApiChecker(req) {
                 const updatedBot = await UserBot.findOneAndUpdate(
                     { _id: existingBot._id },
                     {
-                        ...commonPayload, 
-                        $unset: { deletedAt: 1 } 
+                        ...commonPayload,
+                        $unset: { deletedAt: 1 }
                     },
                     { new: true }
                 );
                 return updatedBot;
             }
             await Promise.all([
-                Company.updateOne({ _id: companyId }, { $unset: { [`queryLimit.${AI_MODAL_PROVIDER.HUGGING_FACE}`]: '' }}),
+                Company.updateOne({ _id: companyId }, { $unset: { [`queryLimit.${AI_MODAL_PROVIDER.HUGGING_FACE}`]: '' } }),
                 UserBot.updateOne({ _id: existingBot._id }, { $set: createCommonBotPayload(body, null) })
             ])
             return true;
         }
-        
+
 
         return UserBot.create(commonPayload);
     } catch (error) {
@@ -602,7 +606,7 @@ const TASK_CODE = {
 }
 
 function createCommonBotPayload(body, companyInfo = null) {
-    const { name, tool, bot, taskType, apiType, description, endpoint, repo, context, key, sample, frequencyPenalty, topK, topP, typicalP, repetitionPenalty, temperature, sequences,numInference,gScale } = body;
+    const { name, tool, bot, taskType, apiType, description, endpoint, repo, context, key, sample, frequencyPenalty, topK, topP, typicalP, repetitionPenalty, temperature, sequences, numInference, gScale } = body;
 
     const stopSequences = sequences ? [sequences] : ['<|eot_id|>'];
     const config = {
@@ -627,11 +631,11 @@ function createCommonBotPayload(body, companyInfo = null) {
                 id: companyInfo._id,
             },
         }),
-        ...(taskType === TASK_CODE.IMAGE_GENERATION  && {
-            modelType : 3
+        ...(taskType === TASK_CODE.IMAGE_GENERATION && {
+            modelType: 3
         }),
         ...(taskType === TASK_CODE.TEXT_GENERATION && {
-            modelType : 2,
+            modelType: 2,
             visionEnable: false,
             tool: tool,
             stream: true
@@ -698,7 +702,7 @@ async function anthropicApiChecker(req) {
                         update: { $set: modelConfig, $unset: { deletedAt: 1 } }
                     }
                 });
-            else 
+            else
                 inserts.push(modelConfig);
         });
 
@@ -790,17 +794,17 @@ async function createFreeTierApiKey(user) {
         const qwendata = [];
         // anthropic migration
         ANTHROPIC_MODAL.forEach(element => {
-                const modelConfig = constructModelConfig(element.name, anthropic, company, { apikey: anthropicKey }, { stopSequences: [], temperature: 0.7, topK: 0, topP: 0, tools: [] }, element.type);
-                const existingModel = existingBot.find((bot) => bot.name === element.name && bot.company.id.toString() === company._id.toString() && bot.bot.code === anthropic.code);
-                if (existingModel)
-                    anthropicdata.push({
-                        updateOne: {
-                            filter: { name: element.name, 'company.id': company._id, 'bot.code': anthropic.code },
-                            update: { $set: modelConfig, $unset: { deletedAt: 1 } }
-                        }
-                    });
-                else 
-                    anthropicdata.push({ insertOne: { document: modelConfig } });
+            const modelConfig = constructModelConfig(element.name, anthropic, company, { apikey: anthropicKey }, { stopSequences: [], temperature: 0.7, topK: 0, topP: 0, tools: [] }, element.type);
+            const existingModel = existingBot.find((bot) => bot.name === element.name && bot.company.id.toString() === company._id.toString() && bot.bot.code === anthropic.code);
+            if (existingModel)
+                anthropicdata.push({
+                    updateOne: {
+                        filter: { name: element.name, 'company.id': company._id, 'bot.code': anthropic.code },
+                        update: { $set: modelConfig, $unset: { deletedAt: 1 } }
+                    }
+                });
+            else
+                anthropicdata.push({ insertOne: { document: modelConfig } });
         });
 
         GEMINI_MODAL.forEach(element => {
@@ -813,7 +817,7 @@ async function createFreeTierApiKey(user) {
                         update: { $set: modelConfig, $unset: { deletedAt: 1 } }
                     }
                 });
-            else 
+            else
                 geminidata.push({ insertOne: { document: modelConfig } });
         });
 
@@ -833,7 +837,7 @@ async function createFreeTierApiKey(user) {
         // });
 
         DEEPSEEK_MODAL.forEach(element => {
-            const modelConfig = constructModelConfig(element.name, deepseek, company, { apikey: deepseekKey }, { temperature : 0.7, topP : 0.9, topK : 10, stream : true}, element.type, false, false, OPENROUTER_PROVIDER.DEEPSEEK);
+            const modelConfig = constructModelConfig(element.name, deepseek, company, { apikey: deepseekKey }, { temperature: 0.7, topP: 0.9, topK: 10, stream: true }, element.type, false, false, OPENROUTER_PROVIDER.DEEPSEEK);
             const existingModel = existingBot.find((bot) => bot.name === element.name && bot.company.id.toString() === company._id.toString() && bot.bot.code === deepseek.code);
 
             if (existingModel)
@@ -848,7 +852,7 @@ async function createFreeTierApiKey(user) {
         });
 
         LLAMA4_MODAL.forEach(element => {
-            const modelConfig = constructModelConfig(element.name, llama4, company, { apikey: llama4Key }, { temperature : 0.7, topP : 0.9, topK : 10, stream : true}, element.type, false, false, OPENROUTER_PROVIDER.LLAMA4);
+            const modelConfig = constructModelConfig(element.name, llama4, company, { apikey: llama4Key }, { temperature: 0.7, topP: 0.9, topK: 10, stream: true }, element.type, false, false, OPENROUTER_PROVIDER.LLAMA4);
             const existingModel = existingBot.find((bot) => bot.name === element.name && bot.company.id.toString() === company._id.toString() && bot.bot.code === llama4.code);
 
             if (existingModel)
@@ -863,7 +867,7 @@ async function createFreeTierApiKey(user) {
         });
 
         GROK_MODAL.forEach(element => {
-            const modelConfig = constructModelConfig(element.name, grok, company, { apikey: grokKey }, { temperature : 0.7, topP : 0.9, topK : 10, stream : true}, element.type, false, false, OPENROUTER_PROVIDER.GROK);
+            const modelConfig = constructModelConfig(element.name, grok, company, { apikey: grokKey }, { temperature: 0.7, topP: 0.9, topK: 10, stream: true }, element.type, false, false, OPENROUTER_PROVIDER.GROK);
             const existingModel = existingBot.find((bot) => bot.name === element.name && bot.company.id.toString() === company._id.toString() && bot.bot.code === grok.code);
 
             if (existingModel)
@@ -874,11 +878,11 @@ async function createFreeTierApiKey(user) {
                     }
                 });
             else
-            grokdata.push({ insertOne: { document: modelConfig } });
+                grokdata.push({ insertOne: { document: modelConfig } });
         });
 
         QWEN_MODAL.forEach(element => {
-            const modelConfig = constructModelConfig(element.name, qwen, company, { apikey: qwenKey }, { temperature : 0.7, topP : 0.9, topK : 10, stream : true}, element.type, false, false, OPENROUTER_PROVIDER.QWEN);
+            const modelConfig = constructModelConfig(element.name, qwen, company, { apikey: qwenKey }, { temperature: 0.7, topP: 0.9, topK: 10, stream: true }, element.type, false, false, OPENROUTER_PROVIDER.QWEN);
             const existingModel = existingBot.find((bot) => bot.name === element.name && bot.company.id.toString() === company._id.toString() && bot.bot.code === qwen.code);
 
             if (existingModel)
@@ -889,23 +893,23 @@ async function createFreeTierApiKey(user) {
                     }
                 });
             else
-            qwendata.push({ insertOne: { document: modelConfig } });
+                qwendata.push({ insertOne: { document: modelConfig } });
         });
-     
-            // huggingface migration
-            const textModelConfig = constructModelConfig('llama-3-2-3b-instruct-ctq', huggingface, company, huggingfaceBaseConfig.text, huggingfaceBaseConfig.extraConfig, 2, true, true);
-            const imageModelConfig = constructModelConfig('sdxl-flash-lgh', huggingface, company, huggingfaceBaseConfig.image, { gScale: 3, numInference: 25 }, 3);
 
-            const existingTextModel = existingBot.find((bot) => bot.name === 'llama-3-2-3b-instruct-ctq' && bot.company.id.toString() === company._id.toString() && bot.bot.code === huggingface.code);
-            const existingImageModel = existingBot.find((bot) => bot.name === 'sdxl-flash-lgh' && bot.company.id.toString() === company._id.toString() && bot.bot.code === huggingface.code);   
-            if (existingTextModel)
-                huggingfacedata.push({ updateOne: { filter: { name: 'llama-3-2-3b-instruct-ctq', 'company.id': company._id, 'bot.code': huggingface.code }, update: { $set: textModelConfig, $unset: { deletedAt: 1 } } } });
-            else
-                huggingfacedata.push({ insertOne: { document: textModelConfig } });
-            if (existingImageModel)
-                huggingfacedata.push({ updateOne: { filter: { name: 'sdxl-flash-lgh', 'company.id': company._id, 'bot.code': huggingface.code }, update: { $set: imageModelConfig, $unset: { deletedAt: 1 } } } });
-            else
-                huggingfacedata.push({ insertOne: { document: imageModelConfig } });
+        // huggingface migration
+        const textModelConfig = constructModelConfig('llama-3-2-3b-instruct-ctq', huggingface, company, huggingfaceBaseConfig.text, huggingfaceBaseConfig.extraConfig, 2, true, true);
+        const imageModelConfig = constructModelConfig('sdxl-flash-lgh', huggingface, company, huggingfaceBaseConfig.image, { gScale: 3, numInference: 25 }, 3);
+
+        const existingTextModel = existingBot.find((bot) => bot.name === 'llama-3-2-3b-instruct-ctq' && bot.company.id.toString() === company._id.toString() && bot.bot.code === huggingface.code);
+        const existingImageModel = existingBot.find((bot) => bot.name === 'sdxl-flash-lgh' && bot.company.id.toString() === company._id.toString() && bot.bot.code === huggingface.code);
+        if (existingTextModel)
+            huggingfacedata.push({ updateOne: { filter: { name: 'llama-3-2-3b-instruct-ctq', 'company.id': company._id, 'bot.code': huggingface.code }, update: { $set: textModelConfig, $unset: { deletedAt: 1 } } } });
+        else
+            huggingfacedata.push({ insertOne: { document: textModelConfig } });
+        if (existingImageModel)
+            huggingfacedata.push({ updateOne: { filter: { name: 'sdxl-flash-lgh', 'company.id': company._id, 'bot.code': huggingface.code }, update: { $set: imageModelConfig, $unset: { deletedAt: 1 } } } });
+        else
+            huggingfacedata.push({ insertOne: { document: imageModelConfig } });
 
         // if (huggingfacedata.length) {
         //     await UserBot.bulkWrite(huggingfacedata);
@@ -978,7 +982,7 @@ async function createGeminiModels(req) {
                 inserts.push(modelConfig);
             }
         });
-        
+
         if (updates.length) {
             return UserBot.bulkWrite(updates);
         }
@@ -1035,20 +1039,20 @@ async function geminiApiKeyChecker(req) {
 
 const sendManualInviteEmail = async (req) => {
     try {
-        const { email, minutes} = req.body;
-        const existingUser = await User.find({ email: { $in: email } }, { email: 1 }); 
+        const { email, minutes } = req.body;
+        const existingUser = await User.find({ email: { $in: email } }, { email: 1 });
         if (!existingUser.length) throw new Error(_localize('module.notFound', req, 'user'));
         const emailPromise = [];
         existingUser.forEach(async (user) => {
             const inviteLink = await createVerifyLink(user, {}, minutes);
             emailPromise.push(getTemplate(EMAIL_TEMPLATE.VERIFICATION_LINK, { link: inviteLink, support: EMAIL?.SENDER_EMAIL }).then(
-                async(template) => {
+                async (template) => {
                     await sendSESMail(user.email, template.subject, template.body);
                 }
             ));
         });
         Promise.all(emailPromise);
-        return true; 
+        return true;
     } catch (error) {
         handleError(error, 'Error - sendManualInviteEmail');
     }
@@ -1058,10 +1062,10 @@ const sendManualInviteEmail = async (req) => {
 const addBlockedDomain = async (req) => {
     try {
         const { domain, reason, isActive } = req.body;
-        const blockedDomain = await BlockedDomain.findOneAndUpdate({ domain }, { $set: { domain, reason, isActive } }, { new  : true, upsert: true });
+        const blockedDomain = await BlockedDomain.findOneAndUpdate({ domain }, { $set: { domain, reason, isActive } }, { new: true, upsert: true });
         return blockedDomain;
     } catch (error) {
-        handleError(error, 'Error - addBlockedDomain');     
+        handleError(error, 'Error - addBlockedDomain');
     }
 }
 
@@ -1156,7 +1160,7 @@ async function openRouterApiChecker(req) {
                 ]
             })
         });
-        console.log('openRouterApiChecker',response.status);
+        console.log('openRouterApiChecker', response.status);
         if (!response.ok) return false;
         const query = Object.keys(OPENROUTER_PROVIDER);
         const [openRouterBot, existing] = await Promise.all([
@@ -1228,11 +1232,11 @@ async function openRouterApiChecker(req) {
 const migrateCompanyModels = async (req) => {
     try {
         const { models, code, api_key, model_type = 2, extra_config } = req.body;
-        
+
         const Company = require('../models/company');
         const UserBot = require('../models/userBot');
         const Bot = require('../models/bot');
-        
+
         const currentDateTime = new Date();
         const modelsToAdd = models;
         const updatedCompanies = [];
@@ -1243,7 +1247,7 @@ const migrateCompanyModels = async (req) => {
         if (!modelData) {
             throw new Error('Model Data not found.');
         }
-        
+
         const botData = {
             title: modelData.title,
             code: modelData.code,
@@ -1252,16 +1256,16 @@ const migrateCompanyModels = async (req) => {
 
         // Get all companies from the collection
         const companies = await Company.find({});
-        
+
         for (const company of companies) {
             const companyId = company._id;
             const companyName = company.companyNm;
             const modelsInserted = [];
-            
+
             for (const modelName of modelsToAdd) {
-                const existingRecord = await UserBot.findOne({ 
-                    name: modelName, 
-                    'company.id': companyId 
+                const existingRecord = await UserBot.findOne({
+                    name: modelName,
+                    'company.id': companyId
                 });
 
                 // If the model does not exist, insert it
@@ -1338,6 +1342,6 @@ module.exports = {
     geminiApiKeyChecker,
     sendManualInviteEmail,
     addBlockedDomain,
-    migrateCompanyModels    
+    migrateCompanyModels
 }
 

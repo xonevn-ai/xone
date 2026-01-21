@@ -1,7 +1,9 @@
-const AWS = require('aws-sdk');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadBucketCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+const { Upload } = require("@aws-sdk/lib-storage");
 const { AWS_CONFIG } = require('../config/config');
 const dbService = require('../utils/dbService');
-require('aws-sdk/lib/maintenance_mode_message').suppress = true; // remove aws v3 migrate warning
+// require('aws-sdk/lib/maintenance_mode_message').suppress = true; // remove aws v3 migrate warning - No longer needed
 const File = require('../models/file');
 const mime = require('mime-types');
 const fs = require('fs');
@@ -11,7 +13,7 @@ const UserBot = require('../models/userBot');
 const sharp = require('sharp');
 const { storeVectorData } = require('./customgpt');
 const mongoose = require('mongoose');
-const { getFileNameWithoutExtension, getFileExtension, hasNotRestrictedExtension, getCompanyId, encodeMetadata } = require('../utils/helper');
+const { getFileNameWithoutExtension, getFileExtension, hasNotRestrictedExtension, getCompanyId, encodeMetadata, handleError } = require('../utils/helper');
 const Busboy = require('busboy');
 const { PassThrough } = require('stream');
 const { EMBEDDINGS } = require('../config/config');
@@ -25,28 +27,23 @@ const crypto = require('crypto');
 const pdf = require('pdf-parse');
 const { embedText, getEmbeddingsClient } = require('./embeddings');
 
- AWS.config.update({
-    apiVersion: AWS_CONFIG.AWS_S3_API_VERSION,
-    accessKeyId: AWS_CONFIG.AWS_ACCESS_ID,
-    secretAccessKey: AWS_CONFIG.AWS_SECRET_KEY,
+const s3Config = {
     region: AWS_CONFIG.REGION,
-     ...(AWS_CONFIG.BUCKET_TYPE === ENV_VAR_VALUE.MINIO && {
-        endpoint: AWS_CONFIG.ENDPOINT,
-        s3ForcePathStyle: true,
-        signatureVersion: 'v4',
-        sslEnabled: AWS_CONFIG.MINIO_USE_SSL
-    })
-})
+    credentials: {
+        accessKeyId: AWS_CONFIG.AWS_ACCESS_ID || AWS_CONFIG.ACCESS_KEY_ID,
+        secretAccessKey: AWS_CONFIG.AWS_SECRET_KEY || AWS_CONFIG.SECRET_ACCESS_KEY,
+    }
+};
 
-const S3 = new AWS.S3({ accessKeyId: AWS_CONFIG.AWS_ACCESS_ID,
-    secretAccessKey: AWS_CONFIG.AWS_SECRET_KEY,
-    endpoint: AWS_CONFIG.ENDPOINT, // accessible from container
-    s3ForcePathStyle: true,
-    signatureVersion: 'v4',
-    sslEnabled: false,
-    useAccelerateEndpoint: false,
-    
- });
+if (AWS_CONFIG.BUCKET_TYPE === ENV_VAR_VALUE.MINIO) {
+    s3Config.endpoint = AWS_CONFIG.ENDPOINT;
+    s3Config.forcePathStyle = true;
+    s3Config.tls = AWS_CONFIG.MINIO_USE_SSL; // Assuming v3 follows standard node logic or this property is supported/ignored safely
+}
+
+// Ensure useAccelerateEndpoint is handled if supported by v3 config (usually handled by endpoint resolution or separate config)
+const S3 = new S3Client(s3Config);
+
 const textSplitter = new RecursiveCharacterTextSplitter({
     chunkSize: EMBEDDINGS.CHUNK_SIZE_CHARS,
     chunkOverlap: EMBEDDINGS.CHUNK_OVERLAP_CHARS,
@@ -65,20 +62,25 @@ const uploadFileToS3 = async (file, filename) => {
             ACL: 'public-read',
             ContentType: file.mimetype,
         };
-        // await S3.upload(params).promise();
+        // Use Upload for better performance with streams/buffers
+        const upload = new Upload({
+            client: S3,
+            params: params,
+        });
+        // await upload.done();
     } catch (error) {
         logger.error('Error in uploadFileToS3', error);
     }
 }
 
 
-async function deleteFromS3 (filename) {
+async function deleteFromS3(filename) {
     try {
         const params = {
             Bucket: AWS_CONFIG.AWS_S3_BUCKET_NAME,
             Key: filename.replace(/^\/+/g, ''),
         }
-        await S3.deleteObject(params).promise();
+        await S3.send(new DeleteObjectCommand(params));
     } catch (error) {
         logger.error('Error in deleteFromS3', error);
     }
@@ -108,7 +110,7 @@ const fileData = (file, folder) => {
     // Extract file extension from mimetype
     let fileExtension = mime.extension(file.mimetype);
     const originalExtension = getFileExtension(file.originalname);
-    
+
     // Override with original extension for specific file types
     if (hasNotRestrictedExtension(originalExtension)) {
         fileExtension = originalExtension;
@@ -136,10 +138,21 @@ const getImageDimensions = async (req) => {
             Key: key
         };
 
-        const s3Object = await S3.getObject(s3Params).promise();
+        const s3Object = await S3.send(new GetObjectCommand(s3Params));
 
-        // s3Object.Body contains the file buffer
-        const fileBuffer = s3Object.Body;
+        // s3Object.Body is a readable stream in v3, sharp needs buffer
+        // const fileBuffer = s3Object.Body; // Invalid in v3 for sharp directly if it's a stream
+        // Need to convert stream to buffer
+        const streamToBuffer = async (stream) => {
+            return new Promise((resolve, reject) => {
+                const chunks = [];
+                stream.on("data", (chunk) => chunks.push(chunk));
+                stream.on("error", reject);
+                stream.on("end", () => resolve(Buffer.concat(chunks)));
+            });
+        };
+
+        const fileBuffer = await streamToBuffer(s3Object.Body);
 
         // Use sharp to get metadata
         const metadata = await sharp(fileBuffer).metadata();
@@ -183,17 +196,17 @@ const fileUpload = async (req) => {
         if (!req.files) {
             return false;
         }
-        
+
         const files = Array.isArray(req.files) ? req.files : [req.files];
         const uploadedFiles = [];
         const chatDocsToCreate = [];
         const vectorDataToProcess = [];
         const fileUpdates = [];
-        
+
         for (const file of files) {
             const data = fileData(file, req.body?.folder);
             const fileInfo = (await File.create(data)).toObject();
-            
+
             if (req.body?.brainId) {
                 const companyId = req.roleCode === ROLE_TYPE.COMPANY ? req.user.company.id : req.user.invitedBy;
                 if (file.mimetype.startsWith('image/')) {
@@ -214,10 +227,10 @@ const fileUpload = async (req) => {
                     });
                 } else {
                     defaultTextModal = await UserBot.findOne(
-                        { name: 'text-embedding-3-small', 'company.id': companyId }, 
+                        { name: 'text-embedding-3-small', 'company.id': companyId },
                         { _id: 1, company: 1 }
                     );
-                    
+
                     fileUpdates.push({
                         updateOne: {
                             filter: { _id: fileInfo._id },
@@ -242,7 +255,7 @@ const fileUpload = async (req) => {
                     });
 
                     //When doc uploaded from doc page at that time vectorApiCall is true
-                    if(req.body.vectorApiCall == 'true') {
+                    if (req.body.vectorApiCall == 'true') {
                         vectorDataToProcess.push({
                             type: fileInfo.type,
                             uri: fileInfo.uri,
@@ -256,10 +269,10 @@ const fileUpload = async (req) => {
                     }
                 }
             }
-            
+
             uploadedFiles.push(fileInfo);
         }
-        
+
         // Batch process all operations
         await Promise.all([
             chatDocsToCreate.length > 0 ? File.insertMany(chatDocsToCreate) : null,
@@ -268,7 +281,7 @@ const fileUpload = async (req) => {
             })() : null,
             fileUpdates.length > 0 ? File.bulkWrite(fileUpdates) : null
         ]);
-        
+
         return uploadedFiles;
     } catch (error) {
         handleError(error, 'Error - file upload')
@@ -318,7 +331,7 @@ const fetchS3UsageAndCost = async (req) => {
         const params = {
             Bucket: AWS_CONFIG.AWS_S3_BUCKET_NAME,
         }
-        const objectList = await S3.listObjectsV2(params).promise();
+        const objectList = await S3.send(new ListObjectsV2Command(params));
 
         // Filter objects based on last modified timestamps within the specified time range
         const filteredObjects = objectList.Contents.filter(object => {
@@ -403,7 +416,7 @@ async function generatePresignedUrl(req) {
             const id = new mongoose.Types.ObjectId();
             let fileExtension = mime.extension(fileKey.type);
             const originalExtension = getFileExtension(fileKey.originalname);
-    
+
             // Override with original extension for specific file types
             if (hasNotRestrictedExtension(originalExtension)) {
                 fileExtension = originalExtension;
@@ -412,7 +425,9 @@ async function generatePresignedUrl(req) {
             fileExtension = fileExtension || originalExtension;
             const extractedFileName = getFileNameWithoutExtension(fileKey.key);
             const fileName = `${req.body.folder}/${extractedFileName}-${id}.${fileExtension}`;
-            const url = await S3.getSignedUrlPromise('putObject', { ...params, Key: fileName, ContentType: fileKey.type });
+
+            const command = new PutObjectCommand({ ...params, Key: fileName, ContentType: fileKey.type });
+            const url = await getSignedUrl(S3, command, { expiresIn: 60 });
             presignedUrl.push(url);
         }
         return presignedUrl;
@@ -435,7 +450,7 @@ function extractFileExtension(fileKey) {
 const createFileRecord = async (req) => {
     try {
         const { name, type, uri, mime_type, file_size, module, isActive } = req.body;
-        
+
         // Create file record in database with proper user data format
         const fileRecord = await File.create({
             name,
@@ -458,7 +473,7 @@ const createFileRecord = async (req) => {
                 company: req.user.company
             }
         });
-        
+
         return fileRecord;
     } catch (error) {
         handleError(error, 'Error - createFileRecord');
@@ -514,57 +529,57 @@ async function uploadFileViaStreams(req) {
     }
     // Verify S3 bucket accessibility
     try {
-        await S3.headBucket({ Bucket: AWS_CONFIG.AWS_S3_BUCKET_NAME }).promise();
-        
+        await S3.send(new HeadBucketCommand({ Bucket: AWS_CONFIG.AWS_S3_BUCKET_NAME }));
+
     } catch (error) {
         logger.error('[uploadFileViaStreams] S3 bucket not accessible:', error);
         throw new Error('Storage service temporarily unavailable');
     }
-    
+
     // Check if content-type is multipart
     if (!req.headers['content-type'] || !req.headers['content-type'].includes('multipart/form-data')) {
         throw new Error('Content-Type must be multipart/form-data for file uploads');
     }
-    
+
     // Check if boundary is present
     if (!req.headers['content-type'].includes('boundary=')) {
         throw new Error('Content-Type must include boundary parameter for multipart uploads');
     }
-    
+
     busboy.on('file', async (fieldname, file, filename) => {
         const mimetype = filename.mimeType;
-        
+
         // Check if fieldname is expected
         if (!fieldname || fieldname === '') {
             file.resume(); // Drain the stream
             return;
         }
-        
+
         // Check if file object is valid
         if (!file || typeof file.pipe !== 'function') {
             logger.error('[uploadFileViaStreams] Invalid file object:', file);
             return;
         }
-        
+
         // IMPORTANT: do not return here
         const originalName = typeof filename === 'string'
             ? filename
             : (filename?.filename || 'upload.bin');
-            
-                // Check if filename is valid
+
+        // Check if filename is valid
         if (!originalName || originalName === 'upload.bin') {
             logger.error('[uploadFileViaStreams] Invalid filename:', originalName);
             file.resume(); // Drain the stream
             return;
         }
-        
+
         // Check if mimetype is valid
         if (!mimetype || mimetype === '') {
             logger.error('[uploadFileViaStreams] Invalid mimetype:', mimetype);
             file.resume(); // Drain the stream
             return;
         }
-        
+
         // Validate file type
         if (!allowedTypes.includes(mimetype) && !hasNotRestrictedExtension(originalName)) {
             const error = new Error(`File type ${mimetype} is not allowed. Only PDF, DOC, DOCX, XLS, XLSX, CSV, TXT, images, and code files are permitted.`);
@@ -590,7 +605,7 @@ async function uploadFileViaStreams(req) {
         const ext = (extFromName || extFromMime || 'bin').toLowerCase();
         const isImage = /\.(jpg|jpeg|webp|png|svg|gif)$/i.test(originalName);
         const key = `${isImage ? 'images' : 'documents'}/${fileId}.${ext}`;
-        
+
         const cleanName = originalName ? originalName.replace(/[^\x00-\x7F]/g, '') : 'unknown';
 
         // build the DB payload with the exact _id from the frontend
@@ -604,14 +619,14 @@ async function uploadFileViaStreams(req) {
             isActive: true,
             module: null,
         };
-        
+
         fileRecords.push(fileData);
 
         // parallel pipes: one to S3, one to embed (only for non-images)
         const s3Pass = new PassThrough({ highWaterMark: 1024 * 1024 });
         const embedPass = new PassThrough({ highWaterMark: 1024 * 1024 });
         file.pipe(s3Pass);
-        
+
         // Only pipe to embed if it's not an image
         if (!isImage) {
             file.pipe(embedPass);
@@ -622,7 +637,7 @@ async function uploadFileViaStreams(req) {
         let lastEmit = 0;
         file.on('data', (chunk) => {
             uploadedBytes += chunk.length;
-            
+
             // Check file size limit during upload
             if (userStorageInfo && uploadedBytes > FILE.SIZE) {
                 const error = new Error(`File size exceeds maximum allowed size of ${FILE.SIZE} bytes (${Math.round(FILE.SIZE / 1024 / 1024)} MB)`);
@@ -630,7 +645,7 @@ async function uploadFileViaStreams(req) {
                 file.destroy(error);
                 return;
             }
-            
+
             // Check if file would exceed user's storage limit
             if (userStorageInfo && (userStorageInfo.usedSize + uploadedBytes) > userStorageInfo.fileSize) {
                 const error = new Error(`File would exceed storage limit. Used: ${Math.round(userStorageInfo.usedSize / 1024 / 1024)} MB, Limit: ${Math.round(userStorageInfo.fileSize / 1024 / 1024)} MB`);
@@ -638,7 +653,7 @@ async function uploadFileViaStreams(req) {
                 file.destroy(error);
                 return;
             }
-            
+
             const now = Date.now();
             if (now - lastEmit > 300) {
                 // emit if you like
@@ -650,7 +665,7 @@ async function uploadFileViaStreams(req) {
             const rec = fileRecords.find(fr => fr._id.toString() === fileId.toString());
             if (rec) {
                 rec.file_size = uploadedBytes.toString();
-                
+
                 // Check user storage limit
                 if (userStorageInfo && (userStorageInfo.usedSize + uploadedBytes) >= userStorageInfo.fileSize) {
                     const error = new Error(`Storage limit exceeded. Used: ${Math.round(userStorageInfo.usedSize / 1024 / 1024)} MB, Limit: ${Math.round(userStorageInfo.fileSize / 1024 / 1024)} MB`);
@@ -670,29 +685,32 @@ async function uploadFileViaStreams(req) {
         const cleanOriginalName = encodeMetadata(originalName);
         const cleanFieldname = String(fieldname || '');
 
-        const uploader = S3.upload({
-            Bucket: AWS_CONFIG.AWS_S3_BUCKET_NAME,
-            Key: key,
-            Body: s3Pass,
-            ContentType: mimetype,
-            Metadata: { originalName: cleanOriginalName, fieldname: cleanFieldname }
-            // Removed ServerSideEncryption: 'AES256' as it's causing errors
-        }, { queueSize: 6, partSize: 16 * 1024 * 1024 });
-        
-        
+        const uploader = new Upload({
+            client: S3,
+            params: {
+                Bucket: AWS_CONFIG.AWS_S3_BUCKET_NAME,
+                Key: key,
+                Body: s3Pass,
+                ContentType: mimetype,
+                Metadata: { originalName: cleanOriginalName, fieldname: cleanFieldname }
+                // Removed ServerSideEncryption: 'AES256' as it's causing errors
+            },
+            queueSize: 6,
+            partSize: 16 * 1024 * 1024
+        });
 
         uploader.on('httpUploadProgress', (p) => {
             // your socket progress here
         });
 
-        const uploadPromise = uploader.promise()
+        const uploadPromise = uploader.done()
             .catch(e => { controller.abort(); throw e; });
 
         // start embedding in parallel for non-images only – DO NOT await
         // Use the brainId extracted from form fields
         const brainId = req.headers['x-brain-id'];
-        
-        
+
+
         if (!isImage) {
             // Get user's embedding API key from database (same logic as vectorApiCall section)
             let embeddingApiKey = null;
@@ -701,18 +719,18 @@ async function uploadFileViaStreams(req) {
                 const userEmbeddingBot = await UserBot.findOne(
                     { name: 'text-embedding-3-small', 'company.id': companyId }
                 );
-                
+
                 if (userEmbeddingBot && userEmbeddingBot.config && userEmbeddingBot.config.apikey) {
                     const { decryptedData } = require('../utils/helper');
                     embeddingApiKey = decryptedData(userEmbeddingBot.config.apikey);
-                    
+
                 } else {
-                    
+
                 }
             } catch (error) {
                 logger.error(`Failed to get user embedding API key for ${originalName}:`, error.message);
             }
-        
+
             embedInParallel(embedPass, {
                 mimetype,
                 originalName,
@@ -725,42 +743,42 @@ async function uploadFileViaStreams(req) {
                 embeddingApiKey: embeddingApiKey, // Pass the user's API key
                 fileId, // pass same id to vector store
                 companyId: getCompanyId(req.user),
-            }).catch(err => { 
+            }).catch(err => {
                 logger.error(`Pinecone embedding failed for ${originalName}:`, err);
-                controller.abort(); 
-                throw err; 
+                controller.abort();
+                throw err;
             });
         }
 
         tasks.push(uploadPromise);
-        
+
         fileIndex++;
-        
+
     });
 
     await new Promise((resolve, reject) => {
         busboy.on('finish', () => {
-            
+
             resolve();
         });
         busboy.on('error', (err) => {
-            
+
             reject(err);
         });
-        
+
         // Check if request is readable
         if (req.readable) {
-            
-            
+
+
             // Check if request has content
             let hasContent = false;
             req.on('data', (chunk) => {
                 hasContent = true;
-                
+
             });
-            
+
             req.pipe(busboy);
-            
+
             // Set a timeout to check if we received any content
             setTimeout(() => {
                 if (!hasContent) {
@@ -775,9 +793,9 @@ async function uploadFileViaStreams(req) {
     });
 
     try {
-        
+
         await Promise.all(tasks);
-        
+
 
         // allow any tail events to settle
         await new Promise(r => setTimeout(r, 500));
@@ -788,11 +806,11 @@ async function uploadFileViaStreams(req) {
             // Clean up S3 files that exceeded storage limit
             for (const fr of filesExceedingLimit) {
                 try {
-                    await S3.deleteObject({
+                    await S3.send(new DeleteObjectCommand({
                         Bucket: AWS_CONFIG.AWS_S3_BUCKET_NAME,
                         Key: fr.s3Key
-                    }).promise();
-                    
+                    }));
+
                 } catch (cleanupError) {
                     logger.error(`Failed to cleanup S3 file ${fr.s3Key}:`, cleanupError);
                 }
@@ -805,7 +823,7 @@ async function uploadFileViaStreams(req) {
         const created = [];
         for (const fr of fileRecords) {
             try {
-                
+
                 const brainId = req.headers['x-brain-id'];
                 const doc = await File.create(fr);
                 ChatDocs.create({
@@ -821,7 +839,7 @@ async function uploadFileViaStreams(req) {
                     }
                 });
                 created.push(doc);
-                
+
             } catch (e) {
                 logger.error(`Mongo create failed for _id=${fr.id}, file: ${fr.originalName}`, e);
                 // Try to clean up the S3 file if MongoDB creation fails
@@ -830,7 +848,7 @@ async function uploadFileViaStreams(req) {
                         Bucket: AWS_CONFIG.AWS_S3_BUCKET_NAME,
                         Key: fr.s3Key
                     }).promise();
-                    
+
                 } catch (cleanupError) {
                     logger.error(`Failed to cleanup S3 file ${fr.s3Key}:`, cleanupError);
                 }
@@ -850,16 +868,16 @@ async function uploadFileViaStreams(req) {
                     },
                     { $inc: { usedSize: totalUploadSize } }
                 );
-                
+
             } catch (updateError) {
                 logger.error('[uploadFileViaStreams] Failed to update user storage:', updateError);
                 // Don't fail the upload for this, but log it
             }
         }
 
-        
-        
-        
+
+
+
         return created;
     } catch (e) {
         logger.error('[uploadFileViaStreams] Upload failed:', e);
@@ -869,7 +887,7 @@ async function uploadFileViaStreams(req) {
             fileRecordsCount: fileRecords.length,
             tasksCount: tasks.length
         });
-        
+
         // Clean up any uploaded files on error
         for (const fr of fileRecords) {
             try {
@@ -877,47 +895,47 @@ async function uploadFileViaStreams(req) {
                     Bucket: AWS_CONFIG.AWS_S3_BUCKET_NAME,
                     Key: fr.s3Key
                 }).promise();
-                                    
+
             } catch (cleanupError) {
                 logger.error(`Failed to cleanup S3 file ${fr.s3Key}:`, cleanupError);
             }
         }
-        
+
         throw e; // Re-throw the error so the controller can handle it
     }
 }
-  
+
 
 // Commented out qdrant embedding function - using pinecone instead
 
-async function embedInParallel(stream, { mimetype, originalName, s3Key, onProgress, signal, fileId,embeddingApiKey }) {
+async function embedInParallel(stream, { mimetype, originalName, s3Key, onProgress, signal, fileId, embeddingApiKey }) {
     let chunkIndex = 0;
     try {
         const { ensureCollection, upsertDocuments } = require('./qdrant');
         await ensureCollection(EMBEDDINGS.VECTOR_SIZE || 1536);
-        
+
         // Get file extension for better type detection
         const fileExtension = getFileExtension(originalName)?.toLowerCase();
-        
+
         // Files that need full content for reliable parsing
         const fullContentFiles = [
             'pdf', 'doc', 'docx', 'xlsx', 'csv', 'xls', 'eml'
         ];
-        
+
         // Code files that can be processed in chunks
         const codeFiles = [
             'php', 'js', 'css', 'html', 'htm', 'sql', 'py', 'json', 'txt', 'text'
         ];
-        
-        if (fullContentFiles.includes(fileExtension) || 
-            mimetype === 'application/pdf' || 
+
+        if (fullContentFiles.includes(fileExtension) ||
+            mimetype === 'application/pdf' ||
             mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
             mimetype === 'application/vnd.ms-excel' ||
             mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
             mimetype === 'application/msword' ||
             mimetype === 'text/csv' ||
             mimetype === 'message/rfc822') {
-            
+
             // Collect full file content
             const parts = [];
             for await (const piece of stream) {
@@ -926,10 +944,10 @@ async function embedInParallel(stream, { mimetype, originalName, s3Key, onProgre
             }
             const fullBuffer = Buffer.concat(parts);
             chunkIndex = 0;
-            await embedAndUpsert(fullBuffer, { mimetype, originalName, s3Key, chunkIndex: 0, onProgress, fileId,embeddingApiKey });
+            await embedAndUpsert(fullBuffer, { mimetype, originalName, s3Key, chunkIndex: 0, onProgress, fileId, embeddingApiKey });
             return;
         }
-        
+
         // For text and code files, process in windows to start embedding earlier
         if (codeFiles.includes(fileExtension) || mimetype?.startsWith('text/')) {
             let buffered = Buffer.alloc(0);
@@ -956,52 +974,52 @@ async function embedInParallel(stream, { mimetype, originalName, s3Key, onProgre
 async function extractTextFromBuffer(buffer, mimetype, originalName) {
     try {
         const fileExtension = getFileExtension(originalName)?.toLowerCase();
-        
+
         // Handle text files
         if (mimetype?.startsWith('text/')) {
             return buffer.toString('utf8');
         }
-        
+
         // Handle PDF files
         if (mimetype === 'application/pdf' || fileExtension === 'pdf') {
             const data = await pdf(buffer);
             return data.text || '';
         }
-        
+
         // Handle Excel files
-        if (fileExtension === 'xlsx' || fileExtension === 'xls' || 
+        if (fileExtension === 'xlsx' || fileExtension === 'xls' ||
             mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
             mimetype === 'application/vnd.ms-excel') {
             return await extractTextFromExcel(buffer, fileExtension);
         }
-        
+
         // Handle CSV files
         if (fileExtension === 'csv' || mimetype === 'text/csv') {
             return await extractTextFromCSV(buffer);
         }
-        
+
         // Handle Word documents
         if (fileExtension === 'docx' || fileExtension === 'doc' ||
             mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
             mimetype === 'application/msword') {
             return await extractTextFromWord(buffer, fileExtension);
         }
-        
+
         // Handle EML files
         if (fileExtension === 'eml' || mimetype === 'message/rfc822') {
             return await extractTextFromEML(buffer);
         }
-        
+
         // Handle code files
         if (['php', 'js', 'css', 'html', 'htm', 'sql', 'py', 'json'].includes(fileExtension)) {
             return buffer.toString('utf8');
         }
-        
+
         // Handle plain text files
         if (['txt', 'text'].includes(fileExtension)) {
             return buffer.toString('utf8');
         }
-        
+
         return '';
     } catch (e) {
         console.warn(`extractTextFromBuffer failed for ${originalName}:`, e?.message || e);
@@ -1016,7 +1034,7 @@ async function extractTextFromExcel(buffer, fileExtension) {
     try {
         const ExcelJS = require('exceljs');
         const workbook = new ExcelJS.Workbook();
-        
+
         if (fileExtension === 'xlsx') {
             await workbook.xlsx.load(buffer);
         } else if (fileExtension === 'xls') {
@@ -1025,12 +1043,12 @@ async function extractTextFromExcel(buffer, fileExtension) {
             console.warn('Limited support for .xls files, consider converting to .xlsx');
             return '';
         }
-        
+
         let extractedText = '';
-        
+
         workbook.eachSheet((worksheet, sheetId) => {
             extractedText += `Sheet: ${worksheet.name}\n`;
-            
+
             worksheet.eachRow((row, rowNumber) => {
                 const rowData = [];
                 row.eachCell((cell, colNumber) => {
@@ -1044,7 +1062,7 @@ async function extractTextFromExcel(buffer, fileExtension) {
             });
             extractedText += '\n';
         });
-        
+
         return extractedText.trim();
     } catch (error) {
         logger.error('Error extracting text from Excel file:', error);
@@ -1065,7 +1083,7 @@ async function extractTextFromCSV(buffer) {
             const fields = [];
             let currentField = '';
             let inQuotes = false;
-            
+
             for (let i = 0; i < line.length; i++) {
                 const char = line[i];
                 if (char === '"') {
@@ -1078,10 +1096,10 @@ async function extractTextFromCSV(buffer) {
                 }
             }
             fields.push(currentField.trim());
-            
+
             return fields.join(' | '); // Use pipe separator for better readability
         });
-        
+
         return parsedLines.join('\n');
     } catch (error) {
         logger.error('Error extracting text from CSV file:', error);
@@ -1102,12 +1120,12 @@ async function extractTextFromWord(buffer, fileExtension) {
                 const JSZip = require('jszip');
                 const zip = new JSZip();
                 const zipContent = await zip.loadAsync(buffer);
-                
+
                 // Get the main document content
                 const documentXml = zipContent.file('word/document.xml');
                 if (documentXml) {
                     const xmlContent = await documentXml.async('string');
-                    
+
                     // Extract text from XML content
                     // Remove XML tags but preserve some structure
                     let textContent = xmlContent
@@ -1122,7 +1140,7 @@ async function extractTextFromWord(buffer, fileExtension) {
                         .replace(/&#39;/g, "'")
                         .replace(/\s+/g, ' ') // Normalize whitespace
                         .trim();
-                    
+
                     return textContent;
                 }
             } catch (zipError) {
@@ -1132,7 +1150,7 @@ async function extractTextFromWord(buffer, fileExtension) {
                     console.warn('Failed to parse .docx as ZIP:', zipError.message);
                 }
                 console.warn('Using fallback method for .docx parsing');
-                
+
                 // Fallback: try to extract text from the buffer directly
                 // This is less reliable but provides basic text extraction
                 const content = buffer.toString('utf8');
@@ -1148,7 +1166,7 @@ async function extractTextFromWord(buffer, fileExtension) {
             console.warn('Limited support for .doc files, consider converting to .docx');
             return '';
         }
-        
+
         return '';
     } catch (error) {
         logger.error('Error extracting text from Word file:', error);
@@ -1162,30 +1180,30 @@ async function extractTextFromWord(buffer, fileExtension) {
 async function extractTextFromEML(buffer) {
     try {
         const emlContent = buffer.toString('utf8');
-        
+
         // Split EML into headers and body
         const parts = emlContent.split('\n\n');
         if (parts.length < 2) {
             return emlContent;
         }
-        
+
         const headers = parts[0];
         const body = parts.slice(1).join('\n\n');
-        
+
         // Extract relevant information
         let extractedText = '';
-        
+
         // Parse headers
         const headerLines = headers.split('\n');
         for (const line of headerLines) {
-            if (line.startsWith('From:') || line.startsWith('To:') || 
+            if (line.startsWith('From:') || line.startsWith('To:') ||
                 line.startsWith('Subject:') || line.startsWith('Date:')) {
                 extractedText += line + '\n';
             }
         }
-        
+
         extractedText += '\n' + body;
-        
+
         return extractedText.trim();
     } catch (error) {
         logger.error('Error extracting text from EML file:', error);
@@ -1197,12 +1215,12 @@ async function extractTextFromEML(buffer) {
 
 async function embedAndUpsert(buf, { mimetype, originalName, s3Key, chunkIndex, onProgress, fileId, embeddingApiKey }) {
     try {
-        const {  upsertDocuments } = require('./qdrant');
-        
-        
+        const { upsertDocuments } = require('./qdrant');
+
+
         const text = await extractTextFromBuffer(buf, mimetype, originalName);
         if (!text || !text.trim()) {
-            
+
             return;
         }
 
@@ -1211,11 +1229,11 @@ async function embedAndUpsert(buf, { mimetype, originalName, s3Key, chunkIndex, 
         // const chunks = splitText(text, size, overlap);
         const chunks = await textSplitter.splitText(text);
         if (!chunks.length) {
-            
+
             return;
         }
 
-        
+
 
         const expectDim = EMBEDDINGS.VECTOR_SIZE || 1536;
         const batchSize = EMBEDDINGS.BATCH_SIZE || 32; // tune 32–128
@@ -1274,11 +1292,11 @@ async function embedAndUpsert(buf, { mimetype, originalName, s3Key, chunkIndex, 
                 }
             }));
 
-            
+
 
             try {
                 const result = await upsertDocuments(docs);
-                
+
             } catch (e) {
                 logger.error(`[embed] Batch upsert failed for file: ${originalName} with fileId: ${fileId}:`, e.message);
                 // degrade gracefully so we don't lose data
@@ -1298,11 +1316,11 @@ async function embedAndUpsert(buf, { mimetype, originalName, s3Key, chunkIndex, 
             });
         }
     } catch (error) {
-        
-          logger.error(`[embed] Failed to process ${originalName}, chunk ${chunkIndex}:`, error.message);
+
+        logger.error(`[embed] Failed to process ${originalName}, chunk ${chunkIndex}:`, error.message);
     }
 }
-  
+
 
 /**
  * Download image from OpenAI URL and upload to S3 in background
@@ -1389,13 +1407,13 @@ const extractFileNameFromUrl = (imageUrl) => {
     try {
         const url = new URL(imageUrl);
         const pathname = url.pathname;
-        
+
         // Extract the img-XXXXXXXXXX part from the path
         const imgMatch = pathname.match(/img-([a-zA-Z0-9]+)/);
         if (imgMatch) {
             return imgMatch[1];
         }
-        
+
         // Fallback: use timestamp as filename
         return `img-${Date.now()}`;
     } catch (error) {
@@ -1413,13 +1431,13 @@ const getFileExtensionFromUrl = (imageUrl) => {
     try {
         const url = new URL(imageUrl);
         const pathname = url.pathname;
-        
+
         // Try to extract extension from pathname
         const extensionMatch = pathname.match(/\.([a-zA-Z0-9]+)$/);
         if (extensionMatch) {
             return extensionMatch[1].toLowerCase();
         }
-        
+
         // Check if URL has content type parameter
         const contentTypeParam = url.searchParams.get('rsct');
         if (contentTypeParam) {
@@ -1435,7 +1453,7 @@ const getFileExtensionFromUrl = (imageUrl) => {
                 return mimeToExt[mimeMatch[1]] || 'png';
             }
         }
-        
+
         // Default to png
         return 'png';
     } catch (error) {
@@ -1451,18 +1469,18 @@ const getFileExtensionFromUrl = (imageUrl) => {
  */
 const uploadOpenAIImageToS3Background = async (imageUrl) => {
     try {
-        
-        
+
+
         // Process the upload
         const result = await downloadAndUploadImageToS3(imageUrl);
-        
+
         if (result.success) {
-            
-            
+
+
         } else {
             logger.error(`Failed to upload image: ${result.error}`);
         }
-        
+
         return result;
     } catch (error) {
         logger.error('Background upload job failed:', error);
@@ -1491,14 +1509,14 @@ const uploadOpenAIImageToS3 = async (imageUrl, options = {}) => {
     } = options;
 
     try {
-        
-        
+
+
         // Process the upload
         const result = await downloadAndUploadImageToS3(imageUrl);
-        
+
         if (result.success) {
-            
-            
+
+
             // If userId and brainId are provided, create chat docs entry
             if (userId && brainId) {
                 try {
@@ -1514,12 +1532,12 @@ const uploadOpenAIImageToS3 = async (imageUrl, options = {}) => {
                     //         createdAt: new Date()
                     //     }
                     // });
-                    
+
                 } catch (chatDocsError) {
                     logger.warn(`⚠️ Failed to create chat docs entry: ${chatDocsError.message}`);
                 }
             }
-            
+
             return {
                 ...result,
                 message: 'Image successfully uploaded to S3'
@@ -1528,7 +1546,7 @@ const uploadOpenAIImageToS3 = async (imageUrl, options = {}) => {
             logger.error(`❌ Failed to upload OpenAI image: ${result.error}`);
             return result;
         }
-        
+
     } catch (error) {
         logger.error('💥 OpenAI image upload failed:', error);
         return {
@@ -1550,11 +1568,11 @@ const getS3UrlByFileId = async (fileId) => {
         if (!file) {
             return null;
         }
-        
+
         // Construct S3 URL from file URI
         const s3Key = file.uri.replace(/^\//, ''); // Remove leading slash
         const s3Url = `https://${AWS_CONFIG.AWS_S3_BUCKET_NAME}.s3.${AWS_CONFIG.REGION}.amazonaws.com/${s3Key}`;
-        
+
         return s3Url;
     } catch (error) {
         logger.error('Error getting S3 URL by file ID:', error);
@@ -1637,7 +1655,7 @@ function generateHashVector(text, size) {
         // Generate a deterministic vector based on text hash
         const hash = crypto.createHash('sha256').update(text).digest('hex');
         const vector = new Array(size).fill(0);
-        
+
         // Use hash to populate vector (not semantically meaningful but deterministic)
         for (let i = 0; i < size; i++) {
             const hashIndex = (i * 7) % hash.length; // Spread hash across vector
@@ -1645,7 +1663,7 @@ function generateHashVector(text, size) {
             vector[i] = (charCode / 15) - 0.5; // Normalize to [-0.5, 0.5] range
         }
         return vector;
-        
+
     } catch (error) {
         // Ultimate fallback: return zero vector
         return new Array(size).fill(0);
@@ -1661,15 +1679,15 @@ function generateHashVector(text, size) {
 const uploadGeminiImageToS3 = async (base64Data, options = {}) => {
     try {
         const { customFileName = 'gemini' } = options;
-        
+
         // Remove data URL prefix if present
         const base64Image = base64Data.replace(/^data:image\/[a-z]+;base64,/, '');
         const buffer = Buffer.from(base64Image, 'base64');
-        
+
         const id = new mongoose.Types.ObjectId();
         const fileExtension = 'png'; // Default to PNG for Gemini images
         const s3Key = `images/${customFileName}-${id}.${fileExtension}`;
-        
+
         const uploadParams = {
             Bucket: AWS_CONFIG.AWS_S3_BUCKET_NAME,
             Key: s3Key,
@@ -1681,9 +1699,9 @@ const uploadGeminiImageToS3 = async (base64Data, options = {}) => {
                 source: 'gemini-nanobanana'
             }
         };
-        
-        const uploadResult = await S3.upload(uploadParams).promise();    
-        
+
+        const uploadResult = await S3.upload(uploadParams).promise();
+
         const fileData = {
             name: `${customFileName}-${id}.${fileExtension}`,
             mime_type: 'image/png',

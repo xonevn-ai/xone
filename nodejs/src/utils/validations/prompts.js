@@ -1,34 +1,34 @@
-const joi = require('joi');
+const { z } = require('zod');
 const { brainSchemaKeys } = require('./commonref');
 
-const createPromptKeys = joi.object({
-    title: joi.string().required(),
-    content: joi.string().required(),
-    brains: joi.array().items(brainSchemaKeys),
-    tags: joi.array().items().required(),
-    website: joi.array().items().optional(),
-    summaries: joi.object().allow(null, {}),
-    addinfo: joi.object().optional(),
-    brandInfo: joi.object().allow(null, {}),
-    companyInfo: joi.object().allow(null, {}),
-    productInfo: joi.object().allow(null, {}),
-    selected: joi.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
-    isFavorite: joi.boolean().optional(),
+const createPromptKeys = z.object({
+    title: z.string(),
+    content: z.string(),
+    brains: z.array(z.object(brainSchemaKeys)).optional(),
+    tags: z.array(z.unknown()), // items() without args means any type or unspecified? Joi items() usually means any.
+    website: z.array(z.unknown()).optional(),
+    summaries: z.object({}).passthrough().nullable().optional(),
+    addinfo: z.object({}).passthrough().optional(),
+    brandInfo: z.object({}).passthrough().nullable().optional(),
+    companyInfo: z.object({}).passthrough().nullable().optional(),
+    productInfo: z.object({}).passthrough().nullable().optional(),
+    selected: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+    isFavorite: z.boolean().optional(),
 });
 
-const editPromptKeys = joi.object({
-    title: joi.string().required(),
-    content: joi.string().required(),
-    brains: joi.array().items(brainSchemaKeys),
-    tags: joi.array().items().required(),
-    website: joi.array().items().optional(),
-    summaries: joi.object().allow(null, {}),
-    addinfo: joi.object().optional(),
-    brandInfo: joi.object().allow(null, {}),
-    companyInfo: joi.object().allow(null, {}),
-    productInfo: joi.object().allow(null, {}),
-    selected: joi.string().regex(/^[0-9a-fA-F]{24}$/).required(),
-    isFavorite: joi.boolean().optional(),
+const editPromptKeys = z.object({
+    title: z.string(),
+    content: z.string(),
+    brains: z.array(z.object(brainSchemaKeys)).optional(),
+    tags: z.array(z.unknown()),
+    website: z.array(z.unknown()).optional(),
+    summaries: z.object({}).passthrough().nullable().optional(),
+    addinfo: z.object({}).passthrough().optional(),
+    brandInfo: z.object({}).passthrough().nullable().optional(),
+    companyInfo: z.object({}).passthrough().nullable().optional(),
+    productInfo: z.object({}).passthrough().nullable().optional(),
+    selected: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    isFavorite: z.boolean().optional(),
 });
 
 module.exports = {

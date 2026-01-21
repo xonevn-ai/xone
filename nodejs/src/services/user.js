@@ -4,7 +4,11 @@ const { randomPasswordGenerator, handleError, getCompanyId, formatUser, getRemai
 const { getTemplate } = require('../utils/renderTemplate');
 const { EMAIL_TEMPLATE, MOMENT_FORMAT, EXPORT_TYPE, ROLE_TYPE, STORAGE_REQUEST_STATUS, GPT_TYPES } = require('../config/constants/common');
 const { sendSESMail } = require('../services/email');
-const moment = require('moment-timezone');
+const dayjs = require('dayjs');
+const utc = require('dayjs/plugin/utc');
+const timezone = require('dayjs/plugin/timezone');
+dayjs.extend(utc);
+dayjs.extend(timezone);
 const WorkSpaceUser = require('../models/workspaceuser');
 const ShareBrain = require('../models/shareBrain');
 const { SUPPORT_EMAIL } = require('../config/config');
@@ -13,7 +17,7 @@ const Chat = require('../models/chat');
 const ChatMember = require('../models/chatmember');
 const ChatDocs = require('../models/chatdocs');
 const TeamUser = require('../models/teamUser');
-const {ObjectId}=require('mongoose').Types
+const { ObjectId } = require('mongoose').Types
 const WorkSpace = require('../models/workspace');
 const Company = require('../models/company');
 const logger = require('../utils/logger');
@@ -49,7 +53,7 @@ const addUser = async (req) => {
 
 const checkExisting = async function (req) {
     const companyId = getCompanyId(req.user);
-    const result = await dbService.getSingleDocumentById(User, req.params.id,[],companyId);
+    const result = await dbService.getSingleDocumentById(User, req.params.id, [], companyId);
     if (!result) {
         throw new Error(_localize('module.notFound', req, 'user'));
     }
@@ -68,12 +72,12 @@ const updateUser = async (req) => {
 const getUser = async (req) => {
     try {
 
-        const subscription = await Subscription.findOne({ 'company.id': req.user.company.id }, { status: 1,startDate:1,endDate:1 })
+        const subscription = await Subscription.findOne({ 'company.id': req.user.company.id }, { status: 1, startDate: 1, endDate: 1 })
         const [result, company, credit] = await Promise.all([
             checkExisting(req),
-            Company.findOne({ _id: req.user.company.id }, { freeCredit: 1,freeTrialStartDate: 1 }).lean(),
+            Company.findOne({ _id: req.user.company.id }, { freeCredit: 1, freeTrialStartDate: 1 }).lean(),
             getUsedCredit({ companyId: req.user.company.id, userId: req.user.id }, req.user),
-            
+
         ]);
         const removeFields = ['password', 'fcmTokens', 'mfaSecret', 'resetHash'];
         removeFields.forEach(field => {
@@ -81,15 +85,15 @@ const getUser = async (req) => {
         });
 
         return {
-          ...result,
-          isFreeTrial: {
-            ...(company?.freeTrialStartDate
-              ? { freeTrialStartDate: company?.freeTrialStartDate }
-              : {}),
-            msgCreditLimit: credit.msgCreditLimit,
-            msgCreditUsed: credit.msgCreditUsed,
-            subscriptionStatus: subscription?.status,
-          },
+            ...result,
+            isFreeTrial: {
+                ...(company?.freeTrialStartDate
+                    ? { freeTrialStartDate: company?.freeTrialStartDate }
+                    : {}),
+                msgCreditLimit: credit.msgCreditLimit,
+                msgCreditUsed: credit.msgCreditUsed,
+                subscriptionStatus: subscription?.status,
+            },
         };
     } catch (error) {
         handleError(error, 'Error in user service get user function');
@@ -114,8 +118,8 @@ const getAllUser = async (req) => {
         // Convert Mongoose documents to plain objects and add usedCredits
         const usersWithCredits = await Promise.all(
             allUsers.data.map(async (user) => {
-                const {msgCreditUsed} = await getUsedCredit({ companyId: user.company.id, userId: user._id }, user);
-                
+                const { msgCreditUsed } = await getUsedCredit({ companyId: user.company.id, userId: user._id }, user);
+
                 // Convert to plain object and add usedCredits
                 const userObj = user.toObject ? user.toObject() : user;
                 return {
@@ -124,7 +128,7 @@ const getAllUser = async (req) => {
                 };
             })
         );
-        
+
         return {
             ...allUsers,
             data: usersWithCredits
@@ -145,7 +149,7 @@ const exportUser = async (req, fileType) => {
             searchColumns: req.query?.searchColumns?.split(','),
         };
 
-        const { data }  = await getAllUser(req);
+        const { data } = await getAllUser(req);
 
         const columns = [
             { header: 'Sr. No.', key: 'srNo' },
@@ -164,14 +168,14 @@ const exportUser = async (req, fileType) => {
                 username: item.username,
                 email: item.email,
                 mobNo: item.mobNo,
-                createdAt: item.createdAt ? moment(item.createdAt).format(MOMENT_FORMAT) : '-',
-                lastLogin: item.lastLogin ? moment(item.lastLogin).format(MOMENT_FORMAT) : '-',
+                createdAt: item.createdAt ? dayjs(item.createdAt).format(MOMENT_FORMAT) : '-',
+                lastLogin: item.lastLogin ? dayjs(item.lastLogin).format(MOMENT_FORMAT) : '-',
                 isActive: item.isActive ? 'Active' : 'Deactive',
                 company: item?.company?.name
             }
         })
 
-        const fileName = `User list ${moment().format(MOMENT_FORMAT)}`;
+        const fileName = `User list ${dayjs().format(MOMENT_FORMAT)}`;
 
         const workbook = dbService.exportToExcel(EXPORT_TYPE.NAME, columns, result);
 
@@ -204,12 +208,12 @@ const storageDetails = async (req) => {
 const storageIncreaseRequest = async (req) => {
     try {
         const query = req.roleCode === ROLE_TYPE.COMPANY ? req.user.company.id : req.user.invitedBy;
-        
+
         const existingRequestCount = await StorageRequest.countDocuments({
             'user.id': req.userId,
             status: STORAGE_REQUEST_STATUS.PENDING
         });
-        
+
         if (existingRequestCount > 0) {
             throw new Error(_localize('module.storageRequestExist', req));
         }
@@ -228,20 +232,20 @@ const storageIncreaseRequest = async (req) => {
             },
             requestSize: req.body.requestSize
         });
-        
+
         let username = `${req.user.fname} ${req.user.lname}`;
 
-        if(req.roleCode === ROLE_TYPE.COMPANY){
+        if (req.roleCode === ROLE_TYPE.COMPANY) {
             username = `${req.user.fname} ${req.user.lname} at ${req?.user?.company?.name}`;
-        } 
-        
+        }
+
         const emailData = {
             username: username,
             size: `${req.body.requestSize}MB`,
             company_admin_name: company?.fname,
             support_email: SUPPORT_EMAIL
         }
-        const recieptEmail = req.roleCode === ROLE_TYPE.COMPANY ? SUPPORT_EMAIL : company.email; 
+        const recieptEmail = req.roleCode === ROLE_TYPE.COMPANY ? SUPPORT_EMAIL : company.email;
         getTemplate(EMAIL_TEMPLATE.STORAGE_SIZE_REQUEST, emailData).then(async (template) => {
             await sendSESMail(recieptEmail, template.subject, template.body)
         })
@@ -264,9 +268,10 @@ const deleteUserRef = async (userId, companyId) => {
 
     try {
         await Company.updateOne(
-            { _id : companyId },
-            { $pull : { users  : { id : userId } }
-        });
+            { _id: companyId },
+            {
+                $pull: { users: { id: userId } }
+            });
 
         const brains = await Brain.find(
             { "user.id": userId, isShare: false },
@@ -345,10 +350,10 @@ const deleteUserRef = async (userId, companyId) => {
             }
         }
     } catch (error) {
-        handleError(error , `Error - deleteUserRef`)
+        handleError(error, `Error - deleteUserRef`)
     }
-    
-      
+
+
 }
 
 const toggleUserBrain = async (req) => {
@@ -369,22 +374,22 @@ const toggleUserBrain = async (req) => {
                 {
                     ...(roleCode === ROLE_TYPE.COMPANY
                         ? {
-                              $or: [
-                                  { roleCode: ROLE_TYPE.COMPANY_MANAGER },
-                                  { roleCode: ROLE_TYPE.USER },
-                                  { roleCode: ROLE_TYPE.COMPANY },
-                              ],
-                          }
+                            $or: [
+                                { roleCode: ROLE_TYPE.COMPANY_MANAGER },
+                                { roleCode: ROLE_TYPE.USER },
+                                { roleCode: ROLE_TYPE.COMPANY },
+                            ],
+                        }
                         : roleCode === ROLE_TYPE.COMPANY_MANAGER
-                        ? { roleCode: ROLE_TYPE.USER }
-                        : {}),
+                            ? { roleCode: ROLE_TYPE.USER }
+                            : {}),
                 },
             ],
         };
-            
+
         if (!userIds) {
             return await User.updateMany(
-               query,
+                query,
                 { $set: { isPrivateBrainVisible: toggleStatus } }
             );
         } else {
@@ -393,7 +398,7 @@ const toggleUserBrain = async (req) => {
                 { $set: { isPrivateBrainVisible: toggleStatus } }
             );
         }
-       
+
     } catch (error) {
         handleError(error, 'Error - toggleUserBrain');
     }
@@ -401,14 +406,14 @@ const toggleUserBrain = async (req) => {
 
 const addUserMsgCredit = async (companyId, msgCredit) => {
     try {
-        if(!companyId){
+        if (!companyId) {
             logger.error('Company id is required');
             return;
         }
         const result = await User.updateMany({ 'company.id': companyId }, { $set: { msgCredit: msgCredit } });
         // This is a major subscription change (adding credits), so trigger reload
         sendUserSubscriptionUpdate(companyId, { forceReload: true, subscriptionChanged: true });
-        return result;        
+        return result;
     } catch (error) {
         handleError(error, 'Error - updateUserMsgCredit');
     }
@@ -423,7 +428,7 @@ const deductUserMsgCredit = async (companyId, creditsToDeduct = 1) => {
 
         // Ensure credits is stored as double type
         creditsToDeduct = Number((parseFloat(creditsToDeduct)).toFixed(1));
-        
+
         if (!creditsToDeduct || creditsToDeduct <= 0) {
             logger.warn('Invalid credit amount for deduction:', creditsToDeduct);
             return { success: false, message: 'Invalid credit amount' };
@@ -441,17 +446,17 @@ const deductUserMsgCredit = async (companyId, creditsToDeduct = 1) => {
         }
 
         logger.info(`Deducted ${creditsToDeduct} credits from ${result.modifiedCount} users in company: ${companyId}`);
-        
+
         // Note: Removed sendUserSubscriptionUpdate to prevent page reload on every message
         // Credit updates will be reflected naturally when user checks their balance
         // sendUserSubscriptionUpdate(companyId, {});
-        
-        return { 
-            success: true, 
-            message: `Deducted ${creditsToDeduct} credits`, 
-            modifiedCount: result.modifiedCount 
+
+        return {
+            success: true,
+            message: `Deducted ${creditsToDeduct} credits`,
+            modifiedCount: result.modifiedCount
         };
-        
+
     } catch (error) {
         logger.error('Error in deductUserMsgCredit:', error);
         handleError(error, 'Error - deductUserMsgCredit');
@@ -463,21 +468,21 @@ const updateUserMsgCredit = async (companyId, newPlanMsgLimit) => {
     try {
         // Get all users in the company
         const companyUsers = await User.find({ 'company.id': companyId }).lean();
-        
+
         const subscriptionRecord = await subscription.findOne({ 'company.id': companyId })
             .select('startDate endDate')
             .lean();
 
         //Caculate per day credit
         const remainingDaysCredit = await getRemainingDaysCredit(subscriptionRecord?.startDate, subscriptionRecord?.endDate, newPlanMsgLimit);
-        
+
         // Prepare bulk operations
         const bulkOps = await Promise.all(companyUsers.map(async user => {
-            const creditInfo = await getUsedCredit({ companyId, userId: user._id}, user, subscriptionRecord);
+            const creditInfo = await getUsedCredit({ companyId, userId: user._id }, user, subscriptionRecord);
             const oldPlanRemainingLimit = Number(creditInfo.msgCreditLimit) - Number(creditInfo.msgCreditUsed);
-            
+
             const newCredit = Number(oldPlanRemainingLimit) + Number(remainingDaysCredit);
-             
+
             return {
                 updateOne: {
                     filter: { _id: user._id },
@@ -485,12 +490,12 @@ const updateUserMsgCredit = async (companyId, newPlanMsgLimit) => {
                 }
             };
         }));
-        
+
         // This is a major subscription change (updating plan credits), so trigger reload
         sendUserSubscriptionUpdate(companyId, { forceReload: true, subscriptionChanged: true });
         // Execute all updates in a single database call
         return User.bulkWrite(bulkOps);
-        
+
     } catch (error) {
         handleError(error, 'Error - updateCompanyUsersCredit');
         return false;
@@ -510,23 +515,23 @@ const userFavoriteList = async (req) => {
                 { title: { $regex: searchTerms.join('|'), $options: 'i' } }
             ]
         } : {};
-        
+
         // Fetch prompts, customGpts, and chatDocs with unified search condition        
         const [prompts = [], customGpts = [], chatDocs = []] = await Promise.all([
             Prompt.find({
-                favoriteByUsers: userId,  
+                favoriteByUsers: userId,
                 ...searchConditions
             }).lean() || [],
-            
+
             CustomGpt.find({
                 favoriteByUsers: userId,
                 ...searchConditions
             }).lean() || [],
-            
+
             ChatDocs.find({
                 favoriteByUsers: userId,
                 ...searchConditions
-            }).select({ '_id': 1, 'title': '$doc.name' , 'embedding_api_key': 1, 'doc': 1, 'fileId': 1 }).lean() || []
+            }).select({ '_id': 1, 'title': '$doc.name', 'embedding_api_key': 1, 'doc': 1, 'fileId': 1 }).lean() || []
         ]);
 
         // Transform the data into the required format with null checks

@@ -1,79 +1,68 @@
-const joi = require('joi');
+const { z } = require('zod');
 const { PASSWORD_REGEX } = require('../../config/constants/common');
 
 const PASSWORD_REGEX_MESSAGE = 'Your password should contain one uppercase letter, numeric and special characters';
 
-const commonSignupKeys = joi.object({
-    users: joi.array().items(joi.object({
-        email: joi.string().email().lowercase().required(),
-    })).required(),
-    roleCode: joi.string().required(),
+const commonSignupKeys = z.object({
+    users: z.array(z.object({
+        email: z.string().email().toLowerCase(),
+    })),
+    roleCode: z.string(),
 });
 
-const signInSchemaKeys = joi.object({
-    email: joi.string().email().lowercase().required(),
-    password: joi
-        .string()
-        .required()
+const signInSchemaKeys = z.object({
+    email: z.string().email().toLowerCase(),
+    password: z.string()
 });
 
-const changePasswordKeys = joi.object({
-    oldpassword: joi
-        .string()
-        .required()
-        .regex(PASSWORD_REGEX)
-        .message(PASSWORD_REGEX_MESSAGE),
-    newpassword: joi
-        .string()
-        .required()
-        .regex(PASSWORD_REGEX)
-        .message(PASSWORD_REGEX_MESSAGE),
+const changePasswordKeys = z.object({
+    oldpassword: z.string()
+        .regex(PASSWORD_REGEX, PASSWORD_REGEX_MESSAGE),
+    newpassword: z.string()
+        .regex(PASSWORD_REGEX, PASSWORD_REGEX_MESSAGE),
 });
 
-const forgotPasswordKeys = joi.object({
-    email: joi.string().email().lowercase().required()
+const forgotPasswordKeys = z.object({
+    email: z.string().email().toLowerCase()
 });
 
-const resendOtpKeys = joi.object({
-    email: joi.string().email().required(),
+const resendOtpKeys = z.object({
+    email: z.string().email(),
 });
 
-const verifyOtpKeys = joi.object({
-    email: joi.string().email().optional(),
-    otp: joi.string().required(),
+const verifyOtpKeys = z.object({
+    email: z.string().email().optional(),
+    otp: z.string(),
 });
 
-const resetPasswordKeys = joi.object({
-    id: joi.string().regex(/^[0-9a-fA-F]{24}$/).required(),
-    resetHash: joi.string().optional(),
-    password: joi
-        .string()
-        .required()
-        .regex(PASSWORD_REGEX)
-        .message(PASSWORD_REGEX_MESSAGE),
+const resetPasswordKeys = z.object({
+    id: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    resetHash: z.string().optional(),
+    password: z.string()
+        .regex(PASSWORD_REGEX, PASSWORD_REGEX_MESSAGE),
 });
 
-const inviteLoginKeys = joi.object({
-    inviteLink: joi.string().required(),
+const inviteLoginKeys = z.object({
+    inviteLink: z.string(),
 })
 
-const logoutKeys = joi.object({
-    fcmToken: joi.string().required(),
+const logoutKeys = z.object({
+    fcmToken: z.string(),
 })
 
-const mfaStatusKeys = joi.object({
-    mfa: joi.boolean().required(),
+const mfaStatusKeys = z.object({
+    mfa: z.boolean(),
 })
 
-const mfaLogin = joi.object({
-    otp: joi.string().required()
+const mfaLogin = z.object({
+    otp: z.string()
 })
 
-const onBoardProfileKeys = joi.object({
-    email: joi.string().email().lowercase().required(),
-    fname: joi.string().required(),
-    lname: joi.string().required(),
-    password: joi.string().required()
+const onBoardProfileKeys = z.object({
+    email: z.string().email().toLowerCase(),
+    fname: z.string(),
+    lname: z.string(),
+    password: z.string()
 })
 
 module.exports = {

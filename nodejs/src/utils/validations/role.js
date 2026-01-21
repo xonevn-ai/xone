@@ -1,14 +1,14 @@
-const joi = require('joi');
+const { z } = require('zod');
 
-const createRoleSchemaKeys = joi.object({
-    name: joi.string().required(),
-    code: joi.string().required(),
+const createRoleSchemaKeys = z.object({
+    name: z.string(),
+    code: z.string(),
 })
 
-const updateRoleSchemaKeys = joi.object({
-    name: joi.string().required(),
-    code: joi.string().required(),
-    isActive: joi.boolean().optional()
+const updateRoleSchemaKeys = z.object({
+    name: z.string(),
+    code: z.string(),
+    isActive: z.boolean().optional()
 })
 
 module.exports = {

@@ -4,7 +4,11 @@ const { AUTH, LINK, SUPPORT_EMAIL, SERVER, DEFAULT_MSG_CREDIT } = require('../co
 const { EMAIL_TEMPLATE, MOMENT_FORMAT, ROLE_TYPE, INVITATION_TYPE, RESPONSE_CODE, APPLICATION_ENVIRONMENT } = require('../config/constants/common');
 const { getTemplate } = require('../utils/renderTemplate');
 const { sendSESMail } = require('../services/email');
-const moment = require('moment-timezone');
+const dayjs = require('dayjs');
+const utc = require('dayjs/plugin/utc');
+const timezone = require('dayjs/plugin/timezone');
+dayjs.extend(utc);
+dayjs.extend(timezone);
 const bcrypt = require('bcrypt');
 const { genHash, generateRandomToken, getCompanyId, formatBrain, formatUser, isInviteAccepted } = require('../utils/helper');
 const File = require('../models/file');
@@ -72,7 +76,7 @@ const logIn = async (req) => {
         const access_token = generateToken(existingUser);
         const refresh_token = generateToken(existingUser, AUTH.JWT_REFRESH_SECRET, AUTH.JWT_REFRESH_EXPIRE);
 
-        const company = await Company.findOne({ _id: existingUser.company.id },{ countryName: 1, countryCode: 1 });
+        const company = await Company.findOne({ _id: existingUser.company.id }, { countryName: 1, countryCode: 1 });
         if (existingUser.mfa) {
             return {
                 ...existingUser._doc,
@@ -104,7 +108,7 @@ const mfaLogin = async (req) => {
 
         const user = await User.findOne({ email: decode.email });
 
-        if (!authenticator.check(req.body.otp, user.mfaSecret)) 
+        if (!authenticator.check(req.body.otp, user.mfaSecret))
             throw new Error(_localize('auth.otp_invalid', req));
 
         // Auto-unblock user if they were blocked
@@ -133,7 +137,7 @@ const refreshToken = async (req, res) => {
         }
         const decode = jwt.verify(token, AUTH.JWT_REFRESH_SECRET);
         const existingUser = await User.findOne({ email: decode.email }, { email: 1 });
-        const result =  generateToken(existingUser);
+        const result = generateToken(existingUser);
         res.message = _localize('module.create', req, 'access_token');
         return util.createdDocumentResponse(result, res);
     } catch (error) {
@@ -146,7 +150,7 @@ const sendLoginOtp = async (user, emailcode) => {
     try {
         const OTP = generateOtp();
         const sysdate = convertToTz();
-        const codeExpiresTime = moment(sysdate).add(10, 'minutes').format(MOMENT_FORMAT);
+        const codeExpiresTime = dayjs(sysdate).add(10, 'minutes').format(MOMENT_FORMAT);
         await User.findOneAndUpdate({ _id: user._id }, { loginCode: OTP, codeExpiresOn: codeExpiresTime }, { new: true, useFindAndModify: false });
         const emailData = {
             name: user.username,
@@ -163,7 +167,7 @@ const sendLoginOtp = async (user, emailcode) => {
 
 const forgotPassword = async (req) => {
     try {
-        const checkUser = await User.findOne({ email: req.body.email,  });
+        const checkUser = await User.findOne({ email: req.body.email, });
         if (!checkUser) {
             throw new Error(_localize('auth.account_not_found', req, 'email'));
         }
@@ -217,7 +221,7 @@ const resendLoginOtp = async (req) => {
         }
         const OTP = generateOtp();
         const sysdate = convertToTz();
-        const codeExpiresTime = moment(sysdate).add(10, 'minutes').format(MOMENT_FORMAT);
+        const codeExpiresTime = dayjs(sysdate).add(10, 'minutes').format(MOMENT_FORMAT);
         await User.updateOne({ _id: user._id }, {
             $unset: {
                 loginCode: 1,
@@ -245,8 +249,8 @@ const verifyLoginOtp = async (req) => {
         if (user.mfa) {
             return true;
         }
-        
-        if (!authenticator.check(req.body.secret, user.mfaSecret)) 
+
+        if (!authenticator.check(req.body.secret, user.mfaSecret))
             throw new Error(_localize('auth.otp_invalid', req));
 
         const data = {
@@ -295,9 +299,9 @@ const viewProfile = async (req) => {
 const updateProfile = async (req) => {
     try {
         const existingUser = await User.findOne({ _id: req.params.id });
-        
+
         if (!existingUser) throw new Error(_localize('auth.account_not_found', req, 'email'));
-        
+
         if (!isInviteAccepted(existingUser.inviteSts)) {
             throw new Error(_localize('auth.not_verified', req, 'email'));
         }
@@ -331,15 +335,15 @@ const updateProfile = async (req) => {
             delete payload.password;
         }
         const updated = await User.findByIdAndUpdate({ _id: req.params.id }, payload, { new: true });
-        
-        if(isPasswordChange){
+
+        if (isPasswordChange) {
             const emailData = {
                 name: req?.user?.fname || updated?.fname || "",
                 support_email: process.env.SUPPORT_EMAIL,
             };
 
             getTemplate(EMAIL_TEMPLATE.RESET_PASSWORD, emailData).then(async (template) => {
-                await sendSESMail(existingUser.email, template.subject, template.body);            
+                await sendSESMail(existingUser.email, template.subject, template.body);
             });
         }
 
@@ -358,7 +362,7 @@ const sendUserSupportMail = (userpayload, supportpayload) => {
             await sendSESMail(SUPPORT_EMAIL, template.subject, template.body);
         })
     ])
-    return { message: `Our team will reach out to you.` , userLimitExceed:1};
+    return { message: `Our team will reach out to you.`, userLimitExceed: 1 };
 }
 
 const inviteUsers = async (req) => {
@@ -395,7 +399,7 @@ const inviteUsers = async (req) => {
         let companyObj = {
             name: req.user.company.name,
             slug: req.user.company.slug,
-            id: req.user.company.id                        
+            id: req.user.company.id
         }
 
         if (
@@ -407,7 +411,7 @@ const inviteUsers = async (req) => {
                     ? req.user.company.name
                     : (await User.findOne({ "company.id": companyId })).company
                         .name;
-            sendSupportEmail(companyName, req.user.email);            
+            sendSupportEmail(companyName, req.user.email);
         }
 
         if (req.roleCode === ROLE_TYPE.COMPANY_MANAGER) {
@@ -421,13 +425,13 @@ const inviteUsers = async (req) => {
             User.find({ email: { $in: emails } }, { email: 1 }),
             Role.findOne({ code: roleCode }, { code: 1 })
         ])
-        
+
         const sysdate = convertToTz();
-        const linkExpiresTime = moment(sysdate).add(24, 'hours').format(MOMENT_FORMAT);
+        const linkExpiresTime = dayjs(sysdate).add(24, 'hours').format(MOMENT_FORMAT);
 
         const newUsers = [];
         const emailPromises = [];
-        
+
         for (const user of users) {
             const inviteHash = `invite?token=${generateRandomToken()}&hash=${genHash()}`;
             const inviteLink = `${LINK.FRONT_URL}/${inviteHash}`;
@@ -448,7 +452,7 @@ const inviteUsers = async (req) => {
                     company: companyObj,
                     msgCredit: DEFAULT_MSG_CREDIT
                 };
-               newUsers.push(newUser);
+                newUsers.push(newUser);
             }
 
             if (!existingUser) {
@@ -458,7 +462,7 @@ const inviteUsers = async (req) => {
                     name: req.user.fname,
                     email: req.user.email
                 });
-    
+
                 emailPromises.push(emailTemplate.then(async (template) => {
                     await sendSESMail(user.email, template.subject, template.body);
                 }));
@@ -486,9 +490,9 @@ const inviteUsers = async (req) => {
 const inviteLogin = async (req) => {
     try {
         const existingUser = await User.findOne({ inviteLink: req.body.inviteLink });
-        if(existingUser){
+        if (existingUser) {
             const sysdate = convertToTz();
-            const expireTime = moment(
+            const expireTime = dayjs(
                 existingUser.inviteExpireOn,
                 MOMENT_FORMAT,
             ).format(MOMENT_FORMAT);
@@ -524,10 +528,10 @@ const inviteLogin = async (req) => {
                             name: existingUser.company.name,
                             support_email: SUPPORT_EMAIL
                         }).then(
-                        async(template) => {
-                            await sendSESMail(existingUser.email, template.subject, template.body);
-                        }
-                    ),
+                            async (template) => {
+                                await sendSESMail(existingUser.email, template.subject, template.body);
+                            }
+                        ),
                         // createPinecornIndex(existingUser, req)
                     ])
                     const defaultWorkSpace = await addDefaultWorkSpace(companyObj, existingUser);
@@ -541,15 +545,15 @@ const inviteLogin = async (req) => {
                     const companyDetails = await Company.findOne({ _id: existingUser.company.id }, { countryName: 1, slug: 1, id: 1 });
                     const signupInfoEmail = process.env.SIGNUP_INFO_EMAIL.split(',');
 
-                    getTemplate(EMAIL_TEMPLATE.COMPANY_SIGNUP_INFO, { 
+                    getTemplate(EMAIL_TEMPLATE.COMPANY_SIGNUP_INFO, {
                         firstName: existingUser.fname,
                         lastName: existingUser.lname,
                         email: existingUser.email,
                         companyName: existingUser.company.name,
                         country: companyDetails?.countryName
                     }).then(
-                        async(template) => {
-                            await sendSESMail(process.env.SUPPORT_EMAIL, template.subject, template.body, [], 
+                        async (template) => {
+                            await sendSESMail(process.env.SUPPORT_EMAIL, template.subject, template.body, [],
                                 signupInfoEmail
                             );
                         }
@@ -596,7 +600,7 @@ const inviteLogin = async (req) => {
 const logout = async (req) => {
     try {
         if (req.body.fcmToken)
-            return User.updateOne({ _id: req.body.userId }, { $pull: { fcmTokens: req.body.fcmToken } } );
+            return User.updateOne({ _id: req.body.userId }, { $pull: { fcmTokens: req.body.fcmToken } });
         return true;
     } catch (error) {
         handleError(error, 'Error - logout');
@@ -615,7 +619,7 @@ const generateMfaSecret = async (req) => {
                 )
             }
         }
-        return User.findOneAndUpdate({ _id: req.userId }, { mfa: req.body.mfa, $unset: { mfaSecret: 1 }}, { new: true }).select('mfa');
+        return User.findOneAndUpdate({ _id: req.userId }, { mfa: req.body.mfa, $unset: { mfaSecret: 1 } }, { new: true }).select('mfa');
     } catch (error) {
         handleError(error, 'Error - generateMfaSecret');
     }
@@ -674,79 +678,79 @@ const seedGeneralBrainAPI = async (req) => {
         console.log(`Started the general brain seeder`);
 
         // Build query based on whether workspaceIds array is empty or not
-        const query = workspaceIds.length > 0 
-        ? { _id: { $in: workspaceIds.map(id => new mongoose.Types.ObjectId(id)) } }
-        : {};
+        const query = workspaceIds.length > 0
+            ? { _id: { $in: workspaceIds.map(id => new mongoose.Types.ObjectId(id)) } }
+            : {};
         const workspaces = await Workspace.find(query);
         const workspaceUsers = await WorkspaceUser.find();
         const shareBrainsCollection = ShareBrain;
         const brainCollection = Brain;
-  
+
         let count = 0;
         let totalWorkspaceUsers = 0;
         const workspaceUserDontHaveAdmin = [];
 
-      for (const workspace of workspaces) {
-        count++
-        console.log("current count", count);
-        
-        const existingBrain = await Brain.findOne({
-          workspaceId: workspace._id,
-          companyId: workspace.company.id,
-          title: "General Brain"
-        });
-  
-        if (!existingBrain) {
-          
-          const adminUser = workspaceUsers.find(
-            (user) =>
-              user?.workspaceId?.toString() === workspace._id.toString() &&
-              (user.role === "ADMIN" || user.role=="COMPANY" || user.role=="MANAGER")
-          );
-         
-          if (!adminUser) {
-            console.log(`⚠️ No admin user found for workspace: ${workspace._id}`);
-            workspaceUserDontHaveAdmin.push(workspace._id)
-          }
+        for (const workspace of workspaces) {
+            count++
+            console.log("current count", count);
 
-          if (adminUser) {
-            const newBrain = {
-              workspaceId: workspace._id,
-              title: "General Brain",
-              user: adminUser.user,
-              teams: workspace.teams || [],
-              companyId: adminUser.companyId,
-              slug: "general-brain",
-              isShare: true
-            };
-            const insertedBrain = await brainCollection.create(newBrain);
-  
-            const getBrainDetails = await brainCollection.findOne({_id: insertedBrain._id});
-  
-            for (const currWorkspaceUser of workspaceUsers.filter(u => u?.workspaceId?.toString() === workspace._id.toString())) {
-              const shareData = {
-                brain: formatBrain(getBrainDetails),
-                user: formatUser(currWorkspaceUser.user),
-                role: currWorkspaceUser.role === "ADMIN" ? "OWNER" : "MEMBER",
-               ...(currWorkspaceUser.teamId && {teamId: currWorkspaceUser.teamId}),
-                invitedBy: adminUser.companyId
-              };
-              await shareBrainsCollection.create(shareData);
+            const existingBrain = await Brain.findOne({
+                workspaceId: workspace._id,
+                companyId: workspace.company.id,
+                title: "General Brain"
+            });
+
+            if (!existingBrain) {
+
+                const adminUser = workspaceUsers.find(
+                    (user) =>
+                        user?.workspaceId?.toString() === workspace._id.toString() &&
+                        (user.role === "ADMIN" || user.role == "COMPANY" || user.role == "MANAGER")
+                );
+
+                if (!adminUser) {
+                    console.log(`⚠️ No admin user found for workspace: ${workspace._id}`);
+                    workspaceUserDontHaveAdmin.push(workspace._id)
+                }
+
+                if (adminUser) {
+                    const newBrain = {
+                        workspaceId: workspace._id,
+                        title: "General Brain",
+                        user: adminUser.user,
+                        teams: workspace.teams || [],
+                        companyId: adminUser.companyId,
+                        slug: "general-brain",
+                        isShare: true
+                    };
+                    const insertedBrain = await brainCollection.create(newBrain);
+
+                    const getBrainDetails = await brainCollection.findOne({ _id: insertedBrain._id });
+
+                    for (const currWorkspaceUser of workspaceUsers.filter(u => u?.workspaceId?.toString() === workspace._id.toString())) {
+                        const shareData = {
+                            brain: formatBrain(getBrainDetails),
+                            user: formatUser(currWorkspaceUser.user),
+                            role: currWorkspaceUser.role === "ADMIN" ? "OWNER" : "MEMBER",
+                            ...(currWorkspaceUser.teamId && { teamId: currWorkspaceUser.teamId }),
+                            invitedBy: adminUser.companyId
+                        };
+                        await shareBrainsCollection.create(shareData);
+                    }
+                }
             }
-          }
+
+            const workspaceUserCount = workspaceUsers.filter(u =>
+                u?.workspaceId?.toString() === workspace._id.toString()
+            ).length;
+            totalWorkspaceUsers += workspaceUserCount;
         }
-    
-        const workspaceUserCount = workspaceUsers.filter(u => 
-          u?.workspaceId?.toString() === workspace._id.toString()
-        ).length;
-        totalWorkspaceUsers += workspaceUserCount;
-      }
-      console.log("Total number of workspace users:", totalWorkspaceUsers);
-      console.log(`Ending the general brain seeder. Total workspace users: ${totalWorkspaceUsers}`);
-      return {
-        workspaceUserDontHaveAdmin,
-        totalWorkspaceUsers
-      }
+        console.log("Total number of workspace users:", totalWorkspaceUsers);
+        console.log(`Ending the general brain seeder. Total workspace users: ${totalWorkspaceUsers}`);
+        return {
+            workspaceUserDontHaveAdmin,
+            totalWorkspaceUsers
+        }
     } catch (error) {
         console.error(`seedGeneralBrain error:`, error);
     }

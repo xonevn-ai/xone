@@ -5,26 +5,38 @@ const TeamUser = require('../models/teamUser');
 const Model = require('../models/bot');
 const Chat = require('../models/chat');
 const ChatMember = require('../models/chatmember');
+const { S3Client } = require('@aws-sdk/client-s3');
+const { Upload } = require("@aws-sdk/lib-storage");
 const mongoose = require('mongoose');
-const AWS = require('aws-sdk');
+// const AWS = require('aws-sdk'); // Removed
 const { AWS_CONFIG } = require('../config/config');
 const logger = require('../utils/logger');
 const { processConversation } = require('./importChatProcessor');
 const { processAnthropicConversation } = require('./importChatProcessorAnthropic');
 const { createJob } = require('../jobs');
 const { JOB_TYPE } = require('../config/constants/common');
+const { ENV_VAR_VALUE } = require('../config/constants/common');
 
 // Use existing AWS configuration
-require('aws-sdk/lib/maintenance_mode_message').suppress = true;
-AWS.config.update({
-    apiVersion: AWS_CONFIG.AWS_S3_API_VERSION,
-    accessKeyId: AWS_CONFIG.AWS_ACCESS_ID,
-    secretAccessKey: AWS_CONFIG.AWS_SECRET_KEY,
-    region: AWS_CONFIG.REGION
-});
+// require('aws-sdk/lib/maintenance_mode_message').suppress = true;
 
-// Create S3 instance with acceleration explicitly disabled
-const S3 = new AWS.S3({ useAccelerateEndpoint: false });
+const s3Config = {
+    region: AWS_CONFIG.REGION,
+    credentials: {
+        accessKeyId: AWS_CONFIG.AWS_ACCESS_ID || AWS_CONFIG.ACCESS_KEY_ID,
+        secretAccessKey: AWS_CONFIG.AWS_SECRET_KEY || AWS_CONFIG.SECRET_ACCESS_KEY,
+    }
+};
+
+if (AWS_CONFIG.BUCKET_TYPE === ENV_VAR_VALUE.MINIO) {
+    s3Config.endpoint = AWS_CONFIG.ENDPOINT;
+    s3Config.forcePathStyle = true;
+    s3Config.tls = AWS_CONFIG.MINIO_USE_SSL;
+}
+
+// Create S3 instance with acceleration explicitly disabled (not set in config)
+const S3 = new S3Client(s3Config);
+
 
 /**
  * Get team data for a brain
@@ -162,9 +174,14 @@ const uploadFileToS3 = async (fileContent, fileName, s3Key) => {
             UseAccelerateEndpoint: false // Disable S3 Transfer Acceleration
         };
 
-        await S3.upload(params).promise();
+        const upload = new Upload({
+            client: S3,
+            params: params,
+        });
+
+        await upload.done();
         logger.info(`File uploaded to S3: ${s3Key}`);
-        
+
         return s3Key;
     } catch (error) {
         logger.error(`Failed to upload file to S3: ${error.message}`);
@@ -199,31 +216,31 @@ const processImportChatJson = async (req) => {
         } catch (error) {
             throw new Error(_localize('import.invalid_json', req));
         }
-        
+
         // Validate if the JSON structure matches one of the two allowed formats
         if (!Array.isArray(jsonData)) {
             throw new Error(_localize('import.invalid_format', req));
         }
-        
+
         // Check if it's Anthropic format or OpenAI format
         const isAnthropicFormat = jsonData.length > 0 && jsonData[0].chat_messages !== undefined;
         const isOpenAIFormat = jsonData.length > 0 && jsonData[0].mapping !== undefined;
-        
+
         // Validate that the JSON matches one of the two allowed formats
         if (!isAnthropicFormat && !isOpenAIFormat) {
             throw new Error(_localize('import.invalid_structure', req));
         }
-        
+
         // Extract conversation data in the format matching Python implementation
         let hashids = [];
         const conversationData = {};
-        
+
         // Process each conversation to extract required data
         jsonData.forEach(conversation => {
             let conversationId = '';
             let lastMsgId = '';
             let hashId = '';
-            
+
             if (isAnthropicFormat) {
                 // Anthropic format - use uuid instead of id for Anthropic format
                 conversationId = conversation.uuid || '';
@@ -231,13 +248,13 @@ const processImportChatJson = async (req) => {
                 if (conversation.chat_messages && conversation.chat_messages.length > 0) {
                     lastMsgId = conversation.chat_messages[conversation.chat_messages.length - 1].uuid || '';
                 }
-                
+
                 // Create a hash from the conversation ID
                 hashId = require('crypto').createHash('sha256').update(conversationId).digest('hex');
             } else {
                 // OpenAI format
                 conversationId = conversation.id || '';
-                
+
                 // Find the last message in the conversation
                 if (conversation.mapping) {
                     const messageIds = Object.keys(conversation.mapping);
@@ -246,14 +263,14 @@ const processImportChatJson = async (req) => {
                         lastMsgId = messageIds[messageIds.length - 1] || '';
                     }
                 }
-                
+
                 // Create a hash from the conversation ID
                 hashId = require('crypto').createHash('sha256').update(conversationId).digest('hex');
             }
-            
+
             if (hashId) {
                 hashids.push(hashId);
-                
+
                 // Create an entry in conversationData with the format matching Python implementation
                 const chatId = new mongoose.Types.ObjectId().toString();
                 conversationData[chatId] = {
@@ -265,14 +282,14 @@ const processImportChatJson = async (req) => {
                 };
             }
         });
-        
+
         // Get existing hashids from the database
         const existingHashids = await _getExistingHashIds(user_id, brain_id);
-        
+
         // Filter out conversations that already exist
         const duplicateHashids = [];
         const newHashids = [];
-        
+
         // Check each hashid if it already exists
         hashids.forEach(hashid => {
             if (existingHashids.includes(hashid)) {
@@ -281,7 +298,7 @@ const processImportChatJson = async (req) => {
                 newHashids.push(hashid);
             }
         });
-        
+
         // Filter conversationData to only include new conversations
         Object.keys(conversationData).forEach(chatId => {
             const currentHashId = conversationData[chatId].hashIds;
@@ -290,14 +307,14 @@ const processImportChatJson = async (req) => {
                 logger.info(`Skipping duplicate conversation with hash: ${currentHashId}`);
             }
         });
-        
+
         // Update hashids to only include new ones
         hashids = newHashids;
-        
+
         if (duplicateHashids.length > 0) {
             logger.info(`Skipping ${duplicateHashids.length} already imported conversations`);
         }
-        
+
         // If no new conversations to import, inform the user
         if (hashids.length === 0) {
             return {
@@ -355,7 +372,7 @@ const processImportChatJson = async (req) => {
                     // Fallback to team._id
                     teamId = team._id;
                 }
-                
+
                 if (teamId) {
                     const teamUsers = await getTeamUsers(teamId.toString());
                     teamDict[teamId.toString()] = teamUsers;
@@ -364,15 +381,15 @@ const processImportChatJson = async (req) => {
         }
 
         // Queue conversations for background processing using the existing queue infrastructure
-        
+
         await createJob(JOB_TYPE.PROCESS_IMPORT_CHAT, {
-            importId, 
-            jsonData, 
-            config, 
-            currentUser, 
-            teamData, 
-            userData, 
-            teamDict, 
+            importId,
+            jsonData,
+            config,
+            currentUser,
+            teamData,
+            userData,
+            teamDict,
             isShare
         }, {
             attempts: 3,
@@ -561,14 +578,14 @@ const processConversations = async (importId, jsonData, config, currentUser, tea
 
                 // Check if this is a shared brain
                 const brainId = new mongoose.Types.ObjectId(config.brain_id);
-                
+
                 // Get all users who have access to this brain through ShareBrain collection
                 const shareBrainMembers = await ShareBrain.find({
                     'brain.id': brainId
                 }).lean();
-                
+
                 logger.info(`Found ${shareBrainMembers.length} members for shared brain: ${config.brain_id}`);
-                
+
                 // Create ChatMember record for the importing user
                 const chatMember = await ChatMember.create({
                     chatId: chat._id,
@@ -582,14 +599,14 @@ const processConversations = async (importId, jsonData, config, currentUser, tea
                     title: conversationTitle
                 });
                 logger.info(`Created ChatMember: ${chatMember._id} for importing user: ${currentUser._id}`);
-                
+
                 // Create ChatMember records for all other brain members to make chat visible to everyone
                 if (shareBrainMembers.length > 0) {
-                    const otherMembers = shareBrainMembers.filter(member => 
-                        member.user && member.user.id && 
+                    const otherMembers = shareBrainMembers.filter(member =>
+                        member.user && member.user.id &&
                         member.user.id.toString() !== currentUser._id.toString()
                     );
-                    
+
                     if (otherMembers.length > 0) {
                         const chatMemberPromises = otherMembers.map(member => {
                             // Prepare user data for ChatMember
@@ -597,11 +614,11 @@ const processConversations = async (importId, jsonData, config, currentUser, tea
                                 email: member.user.email,
                                 id: member.user.id
                             };
-                            
+
                             // Add optional fields if they exist
                             if (member.user.fname) memberUserData.fname = member.user.fname;
                             if (member.user.lname) memberUserData.lname = member.user.lname;
-                            
+
                             // Add profile if exists
                             if (member.user.profile) {
                                 memberUserData.profile = {
@@ -609,7 +626,7 @@ const processConversations = async (importId, jsonData, config, currentUser, tea
                                     uri: member.user.profile.uri,
                                     mime_type: member.user.profile.mime_type
                                 };
-                                
+
                                 // Handle profile.id - ensure it's an ObjectId
                                 if (member.user.profile.id) {
                                     memberUserData.profile.id = typeof member.user.profile.id === 'string'
@@ -617,7 +634,7 @@ const processConversations = async (importId, jsonData, config, currentUser, tea
                                         : member.user.profile.id;
                                 }
                             }
-                            
+
                             return ChatMember.create({
                                 chatId: chat._id,
                                 isNewChat: false,
@@ -630,7 +647,7 @@ const processConversations = async (importId, jsonData, config, currentUser, tea
                                 title: conversationTitle
                             });
                         });
-                        
+
                         await Promise.all(chatMemberPromises);
                         logger.info(`Created ChatMember entries for ${otherMembers.length} additional brain members`);
                     }
@@ -714,13 +731,13 @@ const processConversations = async (importId, jsonData, config, currentUser, tea
 const _getExistingHashIds = async (user_id, brain_id, hashids = []) => {
     try {
         const existingHashIds = new Set();
-        
+
         // Find all imports for this company and brain
         const data = await ImportChat.find({
             'user.id': new mongoose.Types.ObjectId(user_id),
             'brain.id': new mongoose.Types.ObjectId(brain_id)
         }).lean();
-        
+
         // Extract hashIds from conversationData
         for (const doc of data) {
             // Add hashids from the hashids array field
@@ -731,7 +748,7 @@ const _getExistingHashIds = async (user_id, brain_id, hashids = []) => {
                     }
                 });
             }
-            
+
             // Also check conversationData for hashIds
             const conversationData = doc.conversationData;
             if (conversationData && typeof conversationData === 'object') {
@@ -744,7 +761,7 @@ const _getExistingHashIds = async (user_id, brain_id, hashids = []) => {
                 }
             }
         }
-        
+
         logger.info(`Total existing hashes found: ${existingHashIds.size}`);
         return Array.from(existingHashIds);
     } catch (error) {

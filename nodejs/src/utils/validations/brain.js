@@ -1,94 +1,79 @@
-const joi = require('joi');
+const { z } = require('zod');
 const { userSchemaKeys, teamSchemaKeys } = require('./commonref');
 
-const createBrainKeys = joi.object({
-    title: joi.string().required(),
-    isShare: joi.boolean().required(),
-    shareWith: joi
-        .array()
-        .items(
-            joi
+const createBrainKeys = z.object({
+    title: z.string(),
+    isShare: z.boolean(),
+    shareWith: z
+        .array(
+            z
                 .object(userSchemaKeys)
-                // .required(),
         )
         .optional(),
-    workspaceId: joi
+    workspaceId: z
         .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    teams: joi
-    .array()
-    .items(
-      joi
-        .object({
-          ...teamSchemaKeys,
-        })
-        .optional()
-    )
-    .optional(),
-    customInstruction: joi.string().optional().allow(''),
-    charimg: joi.string().optional().allow(''),
-});
-
-const updateBrainKeys = joi.object({
-    title: joi.string().optional(),
-    isShare: joi.boolean().required(),
-    workspaceId:joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    shareWith: joi
-        .array()
-        .items(
-            joi
-                .object(userSchemaKeys)
-                .unknown(true)
-                .required(),
+        .regex(/^[0-9a-fA-F]{24}$/),
+    teams: z
+        .array(
+            z
+                .object(teamSchemaKeys)
         )
         .optional(),
-        customInstruction: joi.string().optional().allow(''),
+    customInstruction: z.string().optional(),
+    charimg: z.string().optional(),
 });
 
-const deleteBrainKeys = joi.object({
-    isShare: joi.boolean().required(),
-});
-
-const convertToSharedKeys = joi.object({
-    shareWith: joi
-        .array()
-        .items(joi.object(userSchemaKeys).unknown(true))
-        .optional(),
-    teams: joi
-        .array()
-        .items(joi.object(teamSchemaKeys).optional())
-        .optional(),
-    customInstruction: joi.string().optional().allow(''),
-});
-
-const shareBrainKeys = joi.object({
-    isShare: joi.boolean().required(),
-    slug: joi.string().required(),
-    shareWith: joi.array().items(joi.object(userSchemaKeys).unknown(true)).required(),
-}).unknown(true);
-
-const unshareBrainKeys = joi.object({
-    user_id: joi
+const updateBrainKeys = z.object({
+    title: z.string().optional(),
+    isShare: z.boolean(),
+    workspaceId: z
         .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
+        .regex(/^[0-9a-fA-F]{24}$/),
+    shareWith: z
+        .array(
+            z
+                .object(userSchemaKeys)
+                .passthrough(),
+        )
+        .optional(),
+    customInstruction: z.string().optional(),
+});
+
+const deleteBrainKeys = z.object({
+    isShare: z.boolean(),
+});
+
+const convertToSharedKeys = z.object({
+    shareWith: z
+        .array(z.object(userSchemaKeys).passthrough())
+        .optional(),
+    teams: z
+        .array(z.object(teamSchemaKeys))
+        .optional(),
+    customInstruction: z.string().optional(),
+});
+
+const shareBrainKeys = z.object({
+    isShare: z.boolean(),
+    slug: z.string(),
+    shareWith: z.array(z.object(userSchemaKeys).passthrough()),
+}).passthrough();
+
+const unshareBrainKeys = z.object({
+    user_id: z
+        .string()
+        .regex(/^[0-9a-fA-F]{24}$/),
 })
 
-const shareDocKeys = joi.object({
-    slug: joi.string().required(),
-    shareDoc: joi
-        .array()
-        .items(
-            joi.object({
+const shareDocKeys = z.object({
+    slug: z.string(),
+    shareDoc: z
+        .array(
+            z.object({
                 ...userSchemaKeys,
-                file: joi.string().required(),
+                file: z.string(),
             }),
-        )
-        .required(),
+        ),
 });
 
 module.exports = {

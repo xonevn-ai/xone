@@ -1,20 +1,14 @@
-const joi = require('joi');
+const { z } = require('zod');
 
-const addFavouriteKeys = joi.object({
-    username: joi.string().required(),
-    threadMsg: joi.string().required(),
-    threadId: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    aiResponse: joi.string().optional(),
+const addFavouriteKeys = z.object({
+    username: z.string(),
+    threadMsg: z.string(),
+    threadId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    aiResponse: z.string().optional(),
 });
 
-const removeFavouriteKeys = joi.object({
-    threadId: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
+const removeFavouriteKeys = z.object({
+    threadId: z.string().regex(/^[0-9a-fA-F]{24}$/),
 });
 
 module.exports = {

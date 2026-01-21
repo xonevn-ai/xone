@@ -1,123 +1,129 @@
-const Joi = require('joi');
+const { z } = require('zod');
 
 const ollamaValidation = {
-    chatRequest: Joi.object({
-        messages: Joi.array().items(
-            Joi.object({
-                role: Joi.string().valid('user', 'assistant', 'system').required(),
-                content: Joi.string().required()
+    chatRequest: z.object({
+        messages: z.array(
+            z.object({
+                role: z.enum(['user', 'assistant', 'system']),
+                content: z.string()
             })
-        ).required(),
-        model: Joi.string().required(),
-        baseUrl: Joi.string().uri().optional(),
-        stream: Joi.boolean().default(false),
-        options: Joi.object({
-            temperature: Joi.number().min(0).max(2).optional(),
-            top_p: Joi.number().min(0).max(1).optional(),
-            top_k: Joi.number().min(1).max(100).optional(),
-            repeat_penalty: Joi.number().min(0.1).max(2.0).optional(),
-            seed: Joi.number().optional(),
-            num_ctx: Joi.number().min(1).optional(),
-            num_predict: Joi.number().min(-1).optional()
+        ),
+        model: z.string(),
+        baseUrl: z.string().url().optional(),
+        stream: z.boolean().default(false),
+        options: z.object({
+            temperature: z.number().min(0).max(2).optional(),
+            top_p: z.number().min(0).max(1).optional(),
+            top_k: z.number().min(1).max(100).optional(),
+            repeat_penalty: z.number().min(0.1).max(2.0).optional(),
+            seed: z.number().optional(),
+            num_ctx: z.number().min(1).optional(),
+            num_predict: z.number().min(-1).optional()
         }).optional()
     }),
 
-    generateRequest: Joi.object({
-        prompt: Joi.string().required(),
-        model: Joi.string().required(),
-        baseUrl: Joi.string().uri().optional(),
-        stream: Joi.boolean().default(false),
-        options: Joi.object({
-            temperature: Joi.number().min(0).max(2).optional(),
-            top_p: Joi.number().min(0).max(1).optional(),
-            top_k: Joi.number().min(1).max(100).optional(),
-            repeat_penalty: Joi.number().min(0.1).max(2.0).optional(),
-            seed: Joi.number().optional(),
-            num_ctx: Joi.number().min(1).optional(),
-            num_predict: Joi.number().min(-1).optional()
+    generateRequest: z.object({
+        prompt: z.string(),
+        model: z.string(),
+        baseUrl: z.string().url().optional(),
+        stream: z.boolean().default(false),
+        options: z.object({
+            temperature: z.number().min(0).max(2).optional(),
+            top_p: z.number().min(0).max(1).optional(),
+            top_k: z.number().min(1).max(100).optional(),
+            repeat_penalty: z.number().min(0.1).max(2.0).optional(),
+            seed: z.number().optional(),
+            num_ctx: z.number().min(1).optional(),
+            num_predict: z.number().min(-1).optional()
         }).optional()
     }),
 
-    pullRequest: Joi.object({
-        model: Joi.string().required(),
-        baseUrl: Joi.string().uri().optional()
+    pullRequest: z.object({
+        model: z.string(),
+        baseUrl: z.string().url().optional()
     }),
 
-    embeddingsRequest: Joi.object({
-        input: Joi.string().required(),
-        model: Joi.string().required(),
-        baseUrl: Joi.string().uri().optional()
+    embeddingsRequest: z.object({
+        input: z.string(),
+        model: z.string(),
+        baseUrl: z.string().url().optional()
     }),
 
-    copyRequest: Joi.object({
-        source: Joi.string().required(),
-        destination: Joi.string().required(),
-        baseUrl: Joi.string().uri().optional()
+    copyRequest: z.object({
+        source: z.string(),
+        destination: z.string(),
+        baseUrl: z.string().url().optional()
     }),
 
-    deleteRequest: Joi.object({
-        model: Joi.string().required(),
-        baseUrl: Joi.string().uri().optional()
+    deleteRequest: z.object({
+        model: z.string(),
+        baseUrl: z.string().url().optional()
     }),
 
-    settingsUpdate: Joi.object({
-        settings: Joi.object({
-            enabled: Joi.boolean().optional(),
-            allowedModels: Joi.array().items(Joi.string()).optional(),
-            restrictedModels: Joi.array().items(Joi.string()).optional(),
-            defaultModel: Joi.string().optional(),
-            maxConcurrentRequests: Joi.number().min(1).max(20).optional(),
-            defaultBaseUrl: Joi.string().uri().optional(),
-            teamSettings: Joi.object({
-                allowModelPulling: Joi.boolean().optional(),
-                allowModelDeletion: Joi.boolean().optional()
+    settingsUpdate: z.object({
+        settings: z.object({
+            enabled: z.boolean().optional(),
+            allowedModels: z.array(z.string()).optional(),
+            restrictedModels: z.array(z.string()).optional(),
+            defaultModel: z.string().optional(),
+            maxConcurrentRequests: z.number().min(1).max(20).optional(),
+            defaultBaseUrl: z.string().url().optional(),
+            teamSettings: z.object({
+                allowModelPulling: z.boolean().optional(),
+                allowModelDeletion: z.boolean().optional()
             }).optional()
-        }).required()
+        })
     }),
 
-    modelName: Joi.string().pattern(/^[a-zA-Z0-9._:-]+$/).required(),
+    modelName: z.string().regex(/^[a-zA-Z0-9._:-]+$/),
 
-    timeRange: Joi.string().valid('1d', '7d', '30d', '90d').default('7d')
+    timeRange: z.enum(['1d', '7d', '30d', '90d']).default('7d')
 };
 
 const validateOllamaRequest = (schema) => {
     return (req, res, next) => {
-        const { error } = schema.validate(req.body);
-        if (error) {
+        const result = schema.safeParse(req.body);
+        if (!result.success) {
             return res.status(400).json({
                 code: 'VALIDATION_ERROR',
-                message: error.details[0].message,
-                details: error.details
+                message: result.error.errors[0].message,
+                details: result.error.errors
             });
         }
+        // Assign parsed data back to req.body to use transformations/defaults
+        req.body = result.data;
         next();
     };
 };
 
 const validateOllamaQuery = (schema) => {
     return (req, res, next) => {
-        const { error } = schema.validate(req.query);
-        if (error) {
+        const result = schema.safeParse(req.query);
+        if (!result.success) {
             return res.status(400).json({
                 code: 'VALIDATION_ERROR',
-                message: error.details[0].message,
-                details: error.details
+                message: result.error.errors[0].message,
+                details: result.error.errors
             });
         }
+        // Assign parsed data back to req.query
+        req.query = result.data;
         next();
     };
 };
 
 const validateOllamaParams = (schema) => {
     return (req, res, next) => {
-        const { error } = schema.validate(req.params);
-        if (error) {
+        const result = schema.safeParse(req.params);
+        if (!result.success) {
             return res.status(400).json({
                 code: 'VALIDATION_ERROR',
-                message: error.details[0].message,
-                details: error.details
+                message: result.error.errors[0].message,
+                details: result.error.errors
             });
         }
+        // Assign parsed data back to req.params
+        req.params = result.data;
         next();
     };
 };

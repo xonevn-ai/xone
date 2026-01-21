@@ -1,44 +1,41 @@
-const joi = require('joi');
+const { z } = require('zod');
 const { companySchemaKeys, botSchemaKeys } = require('./commonref');
 
-const addBotKeys = joi.object({
-    title: joi.string().required(),
-    modelType: joi.number().required(),
+const addBotKeys = z.object({
+    title: z.string(),
+    modelType: z.number(),
 });
 
-const updateBotKeys = joi.object({
-    title: joi.string().required(),
+const updateBotKeys = z.object({
+    title: z.string(),
 });
 
-const createUserBotKeys = joi.object({
-    bot: joi.object(botSchemaKeys).required(),
-    config: joi.object({
-        apiKey: joi.string().required(),
-    }).required()
+const createUserBotKeys = z.object({
+    bot: z.object(botSchemaKeys),
+    config: z.object({
+        apiKey: z.string(),
+    })
 });
 
-const updateUserBotKeys = joi.object({
-    bot: joi.object(botSchemaKeys).required(),
-    company: joi.object(companySchemaKeys).required(),
-    config: joi.object({
-        apikey: joi.string().required(),
-    }).required(),
+const updateUserBotKeys = z.object({
+    bot: z.object(botSchemaKeys),
+    company: z.object(companySchemaKeys),
+    config: z.object({
+        apikey: z.string(),
+    }),
 });
 
-const updateChatKeys = joi.object({
-    botId: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    msg: joi.string().required(),
+const updateChatKeys = z.object({
+    botId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    msg: z.string(),
 })
 
-const viewApiKeys = joi.object({
-    apikey: joi.string().required()
+const viewApiKeys = z.object({
+    apikey: z.string()
 })
 
-const removeUserBotKeys = joi.object({
-    code: joi.string().required(),
+const removeUserBotKeys = z.object({
+    code: z.string(),
 })
 
 module.exports = {

@@ -1,58 +1,43 @@
-const joi = require('joi');
+const { z } = require('zod');
 const { userSchemaKeys, botSchemaKeys, brainSchemaKeys } = require('./commonref');
 
-const createConversationKeys = joi.object({
-    message: joi.object({}).required().unknown(true),
-    chatId: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    model: joi.object(botSchemaKeys).required(),
-    brain: joi.object(brainSchemaKeys).required(),
-    responseModel: joi.string().required(),
-    media: joi.object({
-        name: joi.string().optional(),
-        uri: joi.string().optional(),
-        mime_type: joi.string().optional(),
-    }).unknown(true).optional(),
-    messageId: joi.string().regex(/^[0-9a-fA-F]{24}$/).optional()
-}).unknown(true);
+const createConversationKeys = z.object({
+    message: z.object({}).passthrough(),
+    chatId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    model: z.object(botSchemaKeys),
+    brain: z.object(brainSchemaKeys),
+    responseModel: z.string(),
+    media: z.object({
+        name: z.string().optional(),
+        uri: z.string().optional(),
+        mime_type: z.string().optional(),
+    }).passthrough().optional(),
+    messageId: z.string().regex(/^[0-9a-fA-F]{24}$/).optional()
+}).passthrough();
 
-const editMsgKeys = joi.object({
-    message: joi.string().optional(),
-    ai: joi.string().optional(),
-}).min(1);
+const editMsgKeys = z.object({
+    message: z.string().optional(),
+    ai: z.string().optional(),
+}).refine(data => Object.keys(data).length > 0, { message: "At least one field is required" });
 
-const replyInThreadKeys = joi.object({
-    chatId: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    messageId: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    content: joi.string().optional().allow(''),
-    type: joi.string().required(),
-    attachment: joi.array().items().optional(),
-    tagusers: joi.array().items().optional(),
-}).unknown(true);
+const replyInThreadKeys = z.object({
+    chatId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    messageId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    content: z.string().optional().or(z.literal('')),
+    type: z.string(),
+    attachment: z.array(z.unknown()).optional(),
+    tagusers: z.array(z.unknown()).optional(),
+}).passthrough();
 
-const addReactionKeys = joi.object({
-    id: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    user: joi.object(userSchemaKeys).required(),
-    emoji: joi.string().required(),
+const addReactionKeys = z.object({
+    id: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    user: z.object(userSchemaKeys),
+    emoji: z.string(),
 });
 
-const saveResponseTimeKeys = joi.object({
-    id: joi
-        .string()
-        .regex(/^[0-9a-fA-F]{24}$/)
-        .required(),
-    responseTime: joi.string().required(),
+const saveResponseTimeKeys = z.object({
+    id: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    responseTime: z.string(),
 })
 module.exports = {
     createConversationKeys,

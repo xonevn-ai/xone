@@ -1,29 +1,29 @@
-const joi = require('joi');
+const { z } = require('zod');
 
-const createSchemaKeys = joi.object({
-    username: joi.string().required(),
-    email: joi.string().email().required(),
-    roleId: joi.string().regex(/^[0-9a-fA-F]{24}$/).required(),
-    roleCode: joi.string().required(),
+const createSchemaKeys = z.object({
+    username: z.string(),
+    email: z.string().email(),
+    roleId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    roleCode: z.string(),
 })
 
-const updateSchemaKeys = joi.object({
-    fname: joi.string().optional(),
-    lname: joi.string().optional(),
-}).unknown(true);
+const updateSchemaKeys = z.object({
+    fname: z.string().optional(),
+    lname: z.string().optional(),
+}).passthrough();
 
-const storageRequestKeys = joi.object({
-    requestSize: joi.number().required()
+const storageRequestKeys = z.object({
+    requestSize: z.number()
 })
 
-const updateCreditKeys = joi.object({
-    email: joi.string().email().required(),
-    credit: joi.number().required()
+const updateCreditKeys = z.object({
+    email: z.string().email(),
+    credit: z.number()
 })
 
-const changeRoleKeys = joi.object({
-    userId: joi.string().regex(/^[0-9a-fA-F]{24}$/).required(),
-    roleCode: joi.string().required()
+const changeRoleKeys = z.object({
+    userId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    roleCode: z.string()
 })
 
 module.exports = {

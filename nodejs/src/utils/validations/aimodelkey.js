@@ -1,39 +1,39 @@
-const joi = require('joi');
+const { z } = require('zod');
 
-const huggingFaceAuthKeys = joi.object({
-    name: joi.string().required(),
-    taskType: joi.string().required(),
-    apiType: joi.string().required(),
-    description: joi.string().optional().allow(''),
-    endpoint: joi.string().required(),
-    repo: joi.string().required(),
-    tool: joi.boolean().required(),
-    context: joi.number().required(),
-    sample: joi.boolean().required(),
-    topK: joi.number().required(),
-    topP: joi.number().required(),
-    typicalP: joi.number().required(),
-    repetitionPenalty: joi.number().required(),
-    frequencyPenalty: joi.number().required(),
-    temperature: joi.number().required(),
-    sequences: joi.string().optional().allow(''),
-    key: joi.string().required(),
-    bot: joi.object({
-        title: joi.string().required(),
-        code: joi.string().required(),
-        id: joi.string().regex(/^[0-9a-fA-F]{24}$/).required(),
-    }).required(),
-    numInference: joi.number().required(),
-    gScale: joi.number().required(),
+const huggingFaceAuthKeys = z.object({
+    name: z.string(),
+    taskType: z.string(),
+    apiType: z.string(),
+    description: z.string().optional().or(z.literal('')),
+    endpoint: z.string(),
+    repo: z.string(),
+    tool: z.boolean(),
+    context: z.number(),
+    sample: z.boolean(),
+    topK: z.number(),
+    topP: z.number(),
+    typicalP: z.number(),
+    repetitionPenalty: z.number(),
+    frequencyPenalty: z.number(),
+    temperature: z.number(),
+    sequences: z.string().optional().or(z.literal('')),
+    key: z.string(),
+    bot: z.object({
+        title: z.string(),
+        code: z.string(),
+        id: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    }),
+    numInference: z.number(),
+    gScale: z.number(),
 })
 
-const anthropicAuthKeys = joi.object({
-    key: joi.string().required(),
-    bot: joi.object({
-        title: joi.string().required(),
-        code: joi.string().required(),
-        id: joi.string().regex(/^[0-9a-fA-F]{24}$/).required(),
-    }).required()
+const anthropicAuthKeys = z.object({
+    key: z.string(),
+    bot: z.object({
+        title: z.string(),
+        code: z.string(),
+        id: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    })
 })
 
 module.exports = {

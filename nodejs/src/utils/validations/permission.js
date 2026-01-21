@@ -1,8 +1,8 @@
-const joi = require('joi');
+const { z } = require('zod');
 
-const updatePermissionKeys = joi.object({
-    roleId: joi.string().regex(/^[0-9a-fA-F]{24}$/).required(),
-    permissionIds: joi.array().required(),
+const updatePermissionKeys = z.object({
+    roleId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    permissionIds: z.array(z.unknown()),
 })
 
 module.exports = {

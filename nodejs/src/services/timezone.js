@@ -1,4 +1,10 @@
-const moment = require('moment-timezone');
+const dayjs = require('dayjs');
+const utc = require('dayjs/plugin/utc');
+const timezone = require('dayjs/plugin/timezone');
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
 const { TZ } = require('../config/config');
 
 const DATE_FORMAT = 'YYYY-MM-DD HH:mm:ss';
@@ -9,19 +15,25 @@ const convertToTz = function (params) {
         const defaultTimezone = TZ;
         const requestTimezone = obj?.tz ? obj.tz : defaultTimezone;
         if (obj && obj.date === undefined) {
-            obj.date = moment()
+            obj.date = dayjs()
                 .tz(requestTimezone)
                 .format(DATE_FORMAT);
         }
         const format = obj?.format ? obj.format : DATE_FORMAT;
-        let convertedDateTime = moment(obj.date);
+        let convertedDateTime = dayjs(obj.date);
         if (requestTimezone !== defaultTimezone) {
-            convertedDateTime = moment(obj.date).tz(requestTimezone);
+            convertedDateTime = dayjs(obj.date).tz(requestTimezone);
         }
-        let serverTimeZone = moment(obj.date, defaultTimezone);
+        // Logic to emulate original moment behavior if needed, but dayjs.tz handles conversion
+        // The original code was doing manual offset calc:
+        // let serverTimeZone = moment(obj.date, defaultTimezone);
+        // ...
+        // Replicating original logic exactly to be safe:
+        let serverTimeZone = dayjs.tz(obj.date, defaultTimezone);
         let localOffset = serverTimeZone.utcOffset();
-        serverTimeZone.tz(requestTimezone);
-        let centralOffset = serverTimeZone.utcOffset();
+        // serverTimeZone.tz(requestTimezone) returns NEW instance in dayjs (immutable)
+        let centralTimeZone = serverTimeZone.tz(requestTimezone);
+        let centralOffset = centralTimeZone.utcOffset();
         let diffInMinutes = localOffset - centralOffset;
         const date = convertedDateTime.tz(defaultTimezone);
 
@@ -37,12 +49,12 @@ const convertToRetriveTz = (params) => {
         const defaultTimezone = TZ;
         const requestTimezone = obj?.tz ? obj.tz : defaultTimezone;
         if (obj && obj.date === undefined) {
-            obj.date = moment().toISOString();
+            obj.date = dayjs().toISOString();
         }
         let format = obj?.format ? obj.format : DATE_FORMAT;
-        let convertedDateTime = moment(obj.date);
+        let convertedDateTime = dayjs(obj.date);
         if (requestTimezone !== defaultTimezone) {
-            convertedDateTime = moment(obj.date).tz(defaultTimezone);
+            convertedDateTime = dayjs(obj.date).tz(defaultTimezone);
         }
         const date = convertedDateTime.tz(requestTimezone);
         return format ? date.format(format) : date;

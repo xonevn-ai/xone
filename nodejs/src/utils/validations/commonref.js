@@ -1,112 +1,82 @@
-const joi = require("joi");
+const { z } = require("zod");
+
+// Reusable ObjectId schema
+const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/);
 
 const userSchemaKeys = {
-  email: joi.string().email().required(),
-  id: joi
-    .string()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .required(),
-  fname: joi.string().optional(),
-  lname: joi.string().optional(),
+  email: z.string().email(),
+  id: objectIdSchema,
+  fname: z.string().optional(),
+  lname: z.string().optional(),
 };
 
 const teamSchemaKeys = {
-  teamUsers: joi.array().items(joi.object().unknown(true)).optional(),
-  teamName: joi.string().required(),
-  id: joi
-    .string()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .required(),
+  teamUsers: z.array(z.object({}).passthrough()).optional(),
+  teamName: z.string(),
+  id: objectIdSchema,
 };
 
 const countrySchemaKeys = {
-  nm: joi.string().required(),
-  code: joi.string().required(),
-  id: joi
-    .string()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .required(),
+  nm: z.string(),
+  code: z.string(),
+  id: objectIdSchema,
 };
 
 const updateCountrySchemaKeys = {
-  nm: joi.string().required(),
-  code: joi.string().required(),
-  id: joi
-    .string()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .required(),
+  nm: z.string(),
+  code: z.string(),
+  id: objectIdSchema,
 };
 
 const stateSchemaKeys = {
-  nm: joi.string().required(),
-  code: joi.string().required(),
-  id: joi
-    .string()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .required(),
+  nm: z.string(),
+  code: z.string(),
+  id: objectIdSchema,
 };
 
 const updateStateSchemaKeys = {
-  nm: joi.string().required(),
-  code: joi.string().required(),
-  id: joi
-    .string()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .required(),
+  nm: z.string(),
+  code: z.string(),
+  id: objectIdSchema,
 };
 
 const profileSchemaKeys = {
-  name: joi.string().required(),
-  uri: joi.string().required(),
-  mime_type: joi.string().required(),
-  file_size: joi.string().required(),
+  name: z.string(),
+  uri: z.string(),
+  mime_type: z.string(),
+  file_size: z.string(),
 };
 
 const citySchemaKeys = {
-  nm: joi.string().required(),
-  code: joi.string().required(),
-  id: joi
-    .string()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .required(),
+  nm: z.string(),
+  code: z.string(),
+  id: objectIdSchema,
 };
 
 const updateCitySchemaKeys = {
-  nm: joi.string().required(),
-  code: joi.string().required(),
-  id: joi
-    .string()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .required(),
+  nm: z.string(),
+  code: z.string(),
+  id: objectIdSchema,
 };
 
 const companySchemaKeys = {
-  name: joi.string().required(),
-  slug: joi.string().required(),
-  id: joi
-    .string()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .required(),
+  name: z.string(),
+  slug: z.string(),
+  id: objectIdSchema,
 };
 
 const botSchemaKeys = {
-  title: joi.string().required(),
-  code: joi.string().required(),
-  id: joi
-    .string()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .required(),
-  isShare: joi.boolean()
+  title: z.string(),
+  code: z.string(),
+  id: objectIdSchema,
+  isShare: z.boolean().optional()
 };
 
 const brainSchemaKeys = {
-  title: joi.string().required(),
-  slug: joi.string().required(),
-  id: joi
-    .string()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .required(),
-  isShare: joi.boolean()
+  title: z.string(),
+  slug: z.string(),
+  id: objectIdSchema,
+  isShare: z.boolean().optional()
 };
 
 module.exports = {
@@ -122,4 +92,5 @@ module.exports = {
   companySchemaKeys,
   botSchemaKeys,
   brainSchemaKeys,
+  objectIdSchema, // Exporting this for reuse
 };
