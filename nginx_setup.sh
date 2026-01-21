@@ -49,6 +49,13 @@ fi
 OS_TYPE="$(uname -s)"
 echo "💻 Detected OS: $OS_TYPE"
 
+# Detect WSL and set Docker command wrapper
+DOCKER_CMD="docker"
+if grep -qi "microsoft" /proc/version 2>/dev/null; then
+    echo "🪟 WSL detected - using Windows Docker client to avoid credential issues"
+    DOCKER_CMD="cmd.exe /c docker"
+fi
+
 # Default values
 HOST_ENTRY="127.0.0.1 $DOMAIN"
 
@@ -103,8 +110,8 @@ fi
 # Step 5: Stop and remove existing nginx container
 # -------------------------------
 echo "🛑 Stopping existing nginx container..."
-docker stop xone-nginx 2>/dev/null || true
-docker rm xone-nginx 2>/dev/null || true
+$DOCKER_CMD stop xone-nginx 2>/dev/null || true
+$DOCKER_CMD rm xone-nginx 2>/dev/null || true
 
 # -------------------------------
 # Step 5.5: Ensure Docker network exists
@@ -126,7 +133,7 @@ NETWORK_NAME="${PROJECT_NAME}_app-network"
 
 echo "🔗 Using Docker network: $NETWORK_NAME"
 
-if ! docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
+if ! $DOCKER_CMD network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
     echo "❌ Docker network '$NETWORK_NAME' not found"
     echo "👉 Run: docker compose up -d first"
     exit 1
@@ -137,10 +144,10 @@ fi
 # -------------------------------
 if [ "$ENVIRONMENT_TYPE" = "local" ]; then
     echo "🐳 Building nginx Docker image..."
-    docker build -t xone-nginx:latest ./nginx
+    $DOCKER_CMD build -t xone-nginx:latest ./nginx
 
     echo "🚀 Starting nginx container..."
-    docker run -d \
+    $DOCKER_CMD run -d \
         --name xone-nginx \
         --network "$NETWORK_NAME" \
         -p 80:80 \
