@@ -435,10 +435,17 @@ const inviteUsers = async (req) => {
         for (const user of users) {
             const inviteHash = `invite?token=${generateRandomToken()}&hash=${genHash()}`;
             const inviteLink = `${LINK.FRONT_URL}/${inviteHash}`;
+            console.log('---------------------------------------------------');
+            console.log(`[DEBUG] Invite Link for ${user.email}:`);
+            console.log(`HASH: ${inviteHash}`);
+            console.log(`FULL LINK: ${inviteLink}`);
+            console.log('---------------------------------------------------');
             const existingUser = existingUsers.find(u => u.email === user.email);
 
             if (existingUser) {
-                throw new Error(_localize('module.alreadyExists', req, user.email));
+                // Skip if user already exists
+                continue;
+                // previously threw error: throw new Error(_localize('module.alreadyExists', req, user.email));
             } else {
                 const newUser = {
                     email: user.email,

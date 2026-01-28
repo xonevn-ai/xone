@@ -1,0 +1,148 @@
+services:
+  redis:
+    image: "redis/redis-stack:latest" # Image name local developement with dashboard
+    container_name: redis_container # Container name
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+      - "8001:8001" # RedisInsight
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+
+  qdrant_primary:
+    image: "qdrant/qdrant:latest"
+    container_name: qdrant_primary
+    ports:
+      - "${QDRANT_DASHBOARD_PORT:-6333}:6333"
+      # Expose cluster port if needed for local cluster testing, but usually not needed for single node dev
+      # - "6335:6335" 
+    environment:
+      QDRANT__CLUSTER__ENABLED: true
+      QDRANT__LOG_LEVEL: INFO
+    command: "./qdrant --uri http://qdrant_primary:${QDRANT_NODE_PORT:-6335}"
+    volumes:
+      - ./data/qdrant_primary_data:/qdrant/storage
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:6333/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  qdrant_secondary:
+    image: "qdrant/qdrant:latest"
+    container_name: qdrant_secondary
+    depends_on:
+      - qdrant_primary
+    environment:
+      QDRANT__CLUSTER__ENABLED: true
+      QDRANT__LOG_LEVEL: INFO
+    command: "./qdrant --bootstrap http://qdrant_primary:${QDRANT_NODE_PORT:-6335} --uri http://qdrant_secondary:${QDRANT_NODE_PORT:-6335}"
+    volumes:
+      - ./data/qdrant_secondary_data:/qdrant/storage
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:6333/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: always
+    networks:
+      - app-network
+
+  mongo:
+    image: mongo:latest
+    container_name: xoneai-mongo-1
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_INITDB_DATABASE=test
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - app-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "${MINIO_PORT:-9000}:9000" # S3 API port
+      - "${MINIO_DASHBOARD_PORT:-9001}:9001" # Web UI port
+    volumes:
+      - minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=${AWS_ACCESS_KEY_ID:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${AWS_SECRET_ACCESS_KEY:-minioadmin123}
+    command: server /data --console-address ":${MINIO_DASHBOARD_PORT:-9001}"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - app-network
+
+  minio-init:
+    image: minio/mc
+    env_file: ${ENV_FILE:-.env}
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: [ "/bin/sh", "/minio.sh" ]
+    volumes:
+      - ./minio.sh:/minio.sh:ro
+    networks:
+      - app-network
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng-config/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - SEARXNG_BIND_ADDRESS=0.0.0.0:8080
+      - SEARXNG_PUBLIC_INSTANCE=false
+      - SEARXNG_LIMITER=false
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/search?q=test&format=json" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
+  redis_data:
+  minio_data:
+  searxng_data:

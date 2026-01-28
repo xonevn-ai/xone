@@ -96,7 +96,7 @@ export const LinkItems = React.memo(({ icon, text, href, data }: LinkItemsProps)
     const handleLinkClick = () => {
         closeSidebar();
     };
-    
+
     return (
         <li className="relative group">
             {text === 'Chats' && (
@@ -124,15 +124,13 @@ export const LinkItems = React.memo(({ icon, text, href, data }: LinkItemsProps)
             )}
             <Link
                 href={href}
-                className={`${
-                    isActive ? 'active' : ''
-                } peer-hover:bg-gray-100 flex items-center px-[15px] py-[8.6px] text-b5 rounded-custom hover:text-b2 [&.active]:text-b2`}
+                className={`${isActive ? 'active' : ''
+                    } peer-hover:bg-gray-100 flex items-center px-[15px] py-[8.6px] text-b5 rounded-custom hover:text-b2 [&.active]:text-b2`}
                 onClick={handleLinkClick}
             >
                 <span
-                    className={`${
-                        isActive ? 'active' : ''
-                    } mr-2.5 [&>svg]:h-4 [&>svg]:w-4 [&>svg]:fill-b6 group-hover:[&>svg]:fill-b2 [&>svg]:[&.active]:fill-b2`}
+                    className={`${isActive ? 'active' : ''
+                        } mr-2.5 [&>svg]:h-4 [&>svg]:w-4 [&>svg]:fill-b6 group-hover:[&>svg]:fill-b2 [&>svg]:[&.active]:fill-b2`}
                 >
                     {icon}
                 </span>
@@ -188,7 +186,7 @@ const DefaultEditOption = React.memo(
                         className="edit-collapse-title"
                         onClick={handleEditBrain}
                     >
-                        
+
                         <SettingsIcon width={14}
                             height={16} className="w-[14] h-4 object-contain fill-b4 me-2.5" />
                         Manage
@@ -199,8 +197,8 @@ const DefaultEditOption = React.memo(
     }
 );
 
-export const CommonList = ({ b, currentUser, closeSidebar }: CommonListProps) => {
-    
+export const CommonList: React.FC<CommonListProps> = ({ b, currentUser, closeSidebar }) => {
+
     const dispatch = useDispatch();
     const router = useRouter();
     const pathname = usePathname();
@@ -209,7 +207,7 @@ export const CommonList = ({ b, currentUser, closeSidebar }: CommonListProps) =>
     const [isEditing, setIsEditing] = useState(false);
     const [editedTitle, setEditedTitle] = useState(b.title);
     const inputRef = useRef(null);
-    const buttonRef=useRef(null)
+    const buttonRef = useRef(null)
     const [deleteBrain, isDeletePending] = useServerAction(deleteBrainAction);
     const [updateBrain, isUpdatePending] = useServerAction(updateBrainAction);
     const [showConvertModal, setShowConvertModal] = useState(false);
@@ -258,16 +256,16 @@ export const CommonList = ({ b, currentUser, closeSidebar }: CommonListProps) =>
 
 
     const handleSaveClick = async () => {
-        if(b.title !==inputRef.current.value){
+        if (b.title !== inputRef.current.value) {
             const payload = {
                 title: editedTitle,
                 isShare: b?.isShare,
                 workspaceId: b?.workspaceId
             };
 
-            const response:any=await updateBrain(payload, b?._id);
+            const response: any = await updateBrain(payload, b?._id);
 
-            if(response?.code=='ERROR'){
+            if (response?.code == 'ERROR') {
                 setEditedTitle(b?.title)
             }
             setIsEditing(false)
@@ -309,7 +307,7 @@ export const CommonList = ({ b, currentUser, closeSidebar }: CommonListProps) =>
         dispatch(chatMemberListAction([]));
         dispatch(setSelectedBrain(b));
         persistBrainData(b);
-        
+
         if (pathname === routes.main) {
             history.pushState(null, '', `${routes.main}?b=${brainId}&model=${AI_MODEL_CODE.DEFAULT_OPENAI_SELECTED}`);
         } else {
@@ -321,7 +319,7 @@ export const CommonList = ({ b, currentUser, closeSidebar }: CommonListProps) =>
     return (
         <>
 
-<ConvertToSharedModal
+            <ConvertToSharedModal
                 open={showConvertModal}
                 close={() => setShowConvertModal(false)}
                 brain={b}
@@ -330,9 +328,8 @@ export const CommonList = ({ b, currentUser, closeSidebar }: CommonListProps) =>
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <button
-                            className={`${
-                                isActive ? 'active' : ''
-                            } collapsed-brain-item group relative flex w-full items-center py-1.5 px-2 text-left transition [overflow-anchor:none] hover:z-[2] focus:z-[3] focus:outline-none rounded-custom [&.active]:bg-b12 cursor-pointer`}
+                            className={`${isActive ? 'active' : ''
+                                } collapsed-brain-item group relative flex w-full items-center py-1.5 px-2 text-left transition [overflow-anchor:none] hover:z-[2] focus:z-[3] focus:outline-none rounded-custom [&.active]:bg-b12 cursor-pointer`}
                             onClick={() => {
                                 handleNewChatClick();
                                 closeSidebar();
@@ -340,14 +337,14 @@ export const CommonList = ({ b, currentUser, closeSidebar }: CommonListProps) =>
                             key={b?._id}
                         >
                             {b.charimg ? (
-                                <Image 
-                                    src={b.charimg} 
-                                    alt={b.title} 
-                                    width={20} 
+                                <Image
+                                    src={b.charimg}
+                                    alt={b.title}
+                                    width={20}
                                     height={20}
                                     className="mr-2 flex-shrink-0 rounded collapsed-brain-logo"
                                 />
-                             ) : <Image src={defaultCharacter.image} alt={b.title} width={20} height={20} className="mr-2 flex-shrink-0 rounded collapsed-brain-logo" />
+                            ) : <Image src={defaultCharacter.image} alt={b.title} width={20} height={20} className="mr-2 flex-shrink-0 rounded collapsed-brain-logo" />
                             }
                             {isEditing ? (
                                 <input
@@ -389,7 +386,7 @@ export const CommonList = ({ b, currentUser, closeSidebar }: CommonListProps) =>
                                         handleConvertToShared={!b.isShare ? handleConvertToShared : undefined}
                                         isDeletePending={isDeletePending}
                                         isPrivate={!b.isShare}
-                        />
+                                    />
                                 )}
                         </button>
                     </TooltipTrigger>

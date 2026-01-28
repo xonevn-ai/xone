@@ -139,7 +139,60 @@ The Smart Bots lets you create RAG (Retrieval-Augmented Generation)-based chatbo
 
 ---
 
+## 🚀 Local Development (Hybrid Setup)
+
+For faster development with hot-reload and easier debugging, you can run the Node.js backend and Next.js frontend directly on your host machine while using Docker for backing services.
+
+### 1. Start Backing Services
+
+Start infrastructure services (Redis, MongoDB, MinIO, Qdrant, SearxNG) using the dedicated development compose file:
+
+```bash
+docker-compose -f docker-compose.dev.yml up -d
+```
+
+### 2. Backend Setup
+
+Navigate to the Node.js directory and start the server:
+
+```bash
+cd nodejs
+npm install
+npm run dev
+```
+
+The backend will be available at `http://localhost:4050`
+
+### 3. Frontend Setup
+
+In a new terminal, navigate to the Next.js directory:
+
+```bash
+cd nextjs
+npm install
+npm run dev
+```
+
+The frontend will be available at `http://localhost:3000`
+
+### Environment Configuration
+
+The local `.env` files are already configured to connect to `localhost`:
+- **Backend**: `nodejs/.env` 
+- **Frontend**: `nextjs/.env.local`
+
+These files point to services running on localhost ports (Redis: 6379, Mongo: 27017, MinIO: 9000, etc.)
+
+### Stopping Services
+
+```bash
+docker-compose -f docker-compose.dev.yml down
+```
+
+---
+
 ## Installation Options
+
 
 ```bash
 git clone https://github.com/xonevn-ai/xone.git

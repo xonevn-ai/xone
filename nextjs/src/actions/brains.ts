@@ -6,7 +6,7 @@ import { FormatUserType, ObjectType } from '@/types/common';
 import { BrainCreateType, MemberType, UpdateBrainActionType } from '@/types/brain';
 
 type TeamsInput = {
-    id: string; 
+    id: string;
     teamName: string;
     teamUsers: FormatUserType[];
 }
@@ -40,18 +40,18 @@ export async function createBrainAction(obj: BrainCreateType) {
         charimg: obj.charimg,
     };
     if (obj.isShare) {
-        data.shareWith = obj.members.map((user) => {
+        data.shareWith = obj.members?.length ? obj.members.map((user) => {
             return {
                 email: user.email.toLowerCase(),
                 id: user.id,
                 fname: user?.fname,
                 lname: user?.lname,
             };
-        });
+        }) : [];
         data.teams = obj?.teamsInput?.length ? obj?.teamsInput?.map((currTeam) => ({
-                id: currTeam.id,
-                teamName: currTeam.teamName,
-                teamUsers: currTeam.teamUsers,
+            id: currTeam.id,
+            teamName: currTeam.teamName,
+            teamUsers: currTeam.teamUsers,
         })) : [];
     }
     const response = await serverApi({
@@ -231,12 +231,12 @@ export const deleteShareTeamToBrainAction = async (workspaceId: string, companyI
     const sessionUser = await getSessionUser();
     const response = await serverApi({
         action: MODULE_ACTIONS.DELETE,
-            prefix: MODULE_ACTIONS.WEB_PREFIX,
-            module: MODULES.TEAM_BRAIN,
-            parameters: [teamId],
-            data: {
-                workspaceId,
-                companyId,
+        prefix: MODULE_ACTIONS.WEB_PREFIX,
+        module: MODULES.TEAM_BRAIN,
+        parameters: [teamId],
+        data: {
+            workspaceId,
+            companyId,
             ...(brainId && { brainId }),
         },
         common: true,
@@ -261,7 +261,7 @@ export const addDefaultBrainAction = async (workspaceId: string, companyId: stri
             workspaceId: workspaceId,
         },
     });
-    
+
     await revalidateTagging(response, `${REVALIDATE_TAG_NAME.BRAIN}-${companyId}`);
 
     return response;

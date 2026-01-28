@@ -1,21 +1,21 @@
 import commonApi from '@/api';
 import { DEFAULT_SORT, MODULES, MODULE_ACTIONS, SEARCH_AND_FILTER_OPTIONS, USER_STATUS } from '@/utils/constant';
 import { getCompanyId, getCurrentUser } from '@/utils/handleAuth';
-import { useState,useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 const useMembers = () => {
     const [loading, setLoading] = useState(false);
     const [members, setMembers] = useState([]);
-    const user = getCurrentUser(); 
-    const companyId = getCompanyId(user); 
+    const user = getCurrentUser();
+    const companyId = getCompanyId(user);
 
-    const getMembersList = async (query:any) => {
+    const getMembersList = async (query: any) => {
         try {
             setLoading(true);
-            
+
             const searchColumns = ['email', 'roleCode', 'fname', 'lname'];
             const search = query?.search;
-            
+
             const response = await commonApi({
                 action: MODULE_ACTIONS.LIST,
                 prefix: MODULE_ACTIONS.ADMIN_PREFIX,
@@ -38,7 +38,7 @@ const useMembers = () => {
                         // ],
                         inviteSts: USER_STATUS.ACCEPT,
                         email: { $ne: user?.email },
-                        teamId:{$exists:false},
+                        teamId: { $exists: false },
                         ...query
                     },
                 },

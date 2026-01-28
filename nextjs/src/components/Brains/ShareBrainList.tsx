@@ -28,11 +28,15 @@ const ShareBrainList = ({ brainList, workspaceFirst }: ShareBrainListProps) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [isAtBottom, setIsAtBottom] = useState(false);
 
-    if (!selectedWorkSpace || !selectedWorkSpace._id) {
-        const persistWorkspace = decryptedPersist(WORKSPACE);
-        const setData = persistWorkspace ? persistWorkspace : workspaceFirst;
-        dispatch(setSelectedWorkSpaceAction(setData));
-    }
+    useEffect(() => {
+        if (!selectedWorkSpace || !selectedWorkSpace._id) {
+            const persistWorkspace = decryptedPersist(WORKSPACE);
+            const setData = persistWorkspace ? persistWorkspace : workspaceFirst;
+            if (setData) {
+                dispatch(setSelectedWorkSpaceAction(setData));
+            }
+        }
+    }, [selectedWorkSpace, workspaceFirst, dispatch]);
 
     const selectedWorkSpaceBrainList = brainList.find(
         (brain) => brain._id.toString() === selectedWorkSpace?._id?.toString()
@@ -68,7 +72,9 @@ const ShareBrainList = ({ brainList, workspaceFirst }: ShareBrainListProps) => {
         };
     }, [shareBrainList]);
 
-    dispatch(cacheShareList(dispatchPayload));
+    useEffect(() => {
+        dispatch(cacheShareList(dispatchPayload));
+    }, [dispatchPayload, dispatch]);
     return (
         <>
             {shareBrainList?.length > 0 && (
